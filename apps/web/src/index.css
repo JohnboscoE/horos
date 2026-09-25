@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /*
  * Horos theme: dark, teal accent (#00C2A8), no purple, no gradients (SPEC §15).
@@ -40,7 +41,26 @@
 
   --radius: 0.75rem;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, serif;
+  --font-instrument-serif: "Instrument Serif", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Staggered entrance used by the hero banner: animate-fade-slide-in-1..4 */
+  --animate-fade-slide-in-1: fadeSlideIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+  --animate-fade-slide-in-2: fadeSlideIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+  --animate-fade-slide-in-3: fadeSlideIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.25s both;
+  --animate-fade-slide-in-4: fadeSlideIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.35s both;
+
+  @keyframes fadeSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
 html,
@@ -149,5 +169,8 @@ body {
   .btn,
   .btn-ghost {
     transition: none;
+  }
+  [class*="animate-fade-slide-in"] {
+    animation: none;
   }
 }

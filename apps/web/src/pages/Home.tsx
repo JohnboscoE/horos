@@ -1,39 +1,55 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, auth } from "@/api";
 import { ErrorNote } from "@/ui/bits";
-import { CinematicHero } from "@/components/ui/cinematic-hero";
-import { FlowStepper } from "@/components/ui/flow-simulation";
+import { ResponsiveHeroBanner } from "@/components/ui/responsive-hero-banner";
+import { FLOW_STEPS, FlowStepper, useFlowStep } from "@/components/ui/flow-simulation";
+import { cn } from "@/lib/utils";
+
+// Dark, blue-teal photo of Earth at night with network lines (Unsplash).
+const HERO_IMAGE =
+  "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=2400&q=80";
 
 export function Home() {
-  const [scrolled, setScrolled] = useState(false);
-  useEffect(() => {
-    const on = () => setScrolled(window.scrollY > 40);
-    window.addEventListener("scroll", on, { passive: true });
-    return () => window.removeEventListener("scroll", on);
-  }, []);
+  const signedIn = !!auth.get();
 
   return (
     <div className="bg-background text-foreground">
-      <header className={`fixed inset-x-0 top-0 z-[70] transition-colors duration-300 ${scrolled ? "border-b border-border bg-background/85 backdrop-blur" : ""}`}>
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
-          <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="inline-block h-3 w-3 rounded-sm bg-primary" /> Horos
-          </Link>
-          <nav className="ml-auto flex items-center gap-1 text-sm">
-            <a href="#how" className="hidden rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground sm:inline">How it works</a>
-            <Link to="/log" className="hidden rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground sm:inline">Decision log</Link>
-            <Link to="/metrics" className="hidden rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground sm:inline">Metrics</Link>
-            {auth.get() ? (
-              <Link to="/dashboard" className="btn ml-2 px-3 py-1.5">Open app</Link>
-            ) : (
-              <a href="#start" className="btn ml-2 px-3 py-1.5">Get started</a>
-            )}
-          </nav>
-        </div>
-      </header>
-
-      <CinematicHero />
+      <ResponsiveHeroBanner
+        logo={
+          <span className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
+            <span className="inline-block h-3.5 w-3.5 rounded-sm bg-primary" /> Horos
+          </span>
+        }
+        backgroundImageUrl={HERO_IMAGE}
+        navLinks={[
+          { label: "Home", href: "/", isActive: true },
+          { label: "How it works", href: "#how" },
+          { label: "Decision log", href: "/log" },
+          { label: "Metrics", href: "/metrics" },
+        ]}
+        ctaButtonText={signedIn ? "Open app" : "Get started"}
+        ctaButtonHref={signedIn ? "/dashboard" : "#start"}
+        badgeLabel="Live"
+        badgeText="On Arc Testnet · clients can now pay by card"
+        title="Know who pays late,"
+        titleLine2="before you start the work."
+        description="Invoices paid in USDC on Arc build a shared payment record. An AI agent sets your terms from it and runs collections, inside bounds you set. Every decision is signed and replayable."
+        primaryButtonText={signedIn ? "Go to your invoices" : "Start as a freelancer"}
+        primaryButtonHref={signedIn ? "/dashboard" : "#start"}
+        secondaryButtonText="Watch how it works"
+        secondaryButtonHref="#how"
+        partnersTitle="Built on"
+        partners={[
+          { label: "Arc", href: "https://docs.arc.network" },
+          { label: "Circle Wallets", href: "https://developers.circle.com" },
+          { label: "USDC", href: "https://www.circle.com/usdc" },
+          { label: "App Kit Onramp", href: "https://docs.arc.io/app-kit/onramp" },
+          { label: "Claude", href: "https://www.anthropic.com/claude" },
+        ]}
+      >
+        <LiveFlowStrip />
+      </ResponsiveHeroBanner>
 
       <section id="how" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24">
         <div className="mb-10 max-w-2xl">
@@ -84,6 +100,38 @@ export function Home() {
           Horos is a beta built on Arc with Circle. It records objective payment facts only. Contracts are unaudited.
         </div>
       </footer>
+    </div>
+  );
+}
+
+/** In-hero simulation: one invoice moving through Horos, auto-advancing. */
+function LiveFlowStrip() {
+  const step = useFlowStep(2200);
+  const current = FLOW_STEPS[step]!;
+  return (
+    <div className="rounded-2xl bg-card/80 p-4 text-left ring-1 ring-white/10 backdrop-blur sm:p-5" aria-live="polite">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Live simulation · one invoice</div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-white/70">Acme DAO · 250.00 USDC</span>
+          <span className="rounded-full border border-primary px-2 py-0.5 text-[11px] font-semibold text-primary">{current.status}</span>
+        </div>
+      </div>
+      <ol className="grid grid-cols-5 gap-1.5 sm:gap-2">
+        {FLOW_STEPS.map((s, i) => (
+          <li key={s.key} className="min-w-0">
+            <div className={cn("h-1.5 rounded-full transition-colors duration-500", i <= step ? "bg-primary" : "bg-white/10")} />
+            <div className={cn("mt-2 hidden text-xs font-medium transition-colors duration-500 sm:block", i === step ? "text-white" : i < step ? "text-white/60" : "text-white/35")}>
+              {s.title}
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div key={current.key} className="animate-fade-slide-in-1 mt-4 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
+        <span className="font-semibold text-white">{current.title}</span>
+        <span className="text-sm text-white/75">{current.body}</span>
+        <span className="text-sm text-primary sm:ml-auto">{current.detail}</span>
+      </div>
     </div>
   );
 }

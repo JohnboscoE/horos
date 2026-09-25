@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 /**
  * A scripted run-through of Horos's core loop. Purely presentational (no API calls), used in the
- * landing hero's phone and in the "How it works" section.
+ * landing hero strip and in the "How it works" section.
  */
 export const FLOW_STEPS = [
   {
@@ -53,76 +53,6 @@ export function useFlowStep(intervalMs = 2200, paused = false) {
   }, [intervalMs, paused]);
   // One extra "hold" beat on the final state before looping.
   return Math.min(step, FLOW_STEPS.length - 1);
-}
-
-const STATUS_TONE: Record<string, string> = {
-  DRAFT: "text-muted-foreground border-border",
-  SENT: "text-foreground border-border",
-  ACKNOWLEDGED: "text-foreground border-foreground/40",
-  PAID: "text-primary border-primary",
-  RECORDED: "text-primary border-primary",
-};
-
-/** Compact phone-screen version. */
-export function PhoneFlow({ step, aside }: { step: number; aside?: React.ReactNode }) {
-  const current = FLOW_STEPS[step]!;
-  return (
-    <div className="flex h-full flex-col gap-3 px-4 pt-11 pb-6 text-left">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-white">
-          <span className="h-2.5 w-2.5 rounded-[3px] bg-primary" /> Horos
-        </div>
-        <span className="text-[10px] text-neutral-500">Arc</span>
-      </div>
-
-      <div className="flex gap-2">
-        <div className="phone-widget widget-depth min-w-0 flex-1 rounded-2xl p-3">
-          <div className="text-[9px] uppercase tracking-wider text-neutral-500">Invoice · Acme DAO</div>
-          <div className="mt-0.5 text-2xl font-bold tracking-tight text-white">250.00</div>
-          <div className="mt-1 flex items-center justify-between gap-1">
-            <span className="text-[9px] text-neutral-500">USDC · net 30</span>
-            <span
-              key={current.status}
-              className={cn("rounded-full border px-1.5 py-0.5 text-[8px] font-semibold transition-colors duration-500", STATUS_TONE[current.status])}
-            >
-              {current.status}
-            </span>
-          </div>
-        </div>
-        {aside && <div className="phone-widget widget-depth flex w-[76px] shrink-0 flex-col items-center justify-center rounded-2xl p-1.5">{aside}</div>}
-      </div>
-
-      <div className="phone-widget widget-depth flex-1 rounded-2xl p-3">
-        <ol className="space-y-2.5">
-          {FLOW_STEPS.map((s, i) => (
-            <li key={s.key} className="flex gap-2.5">
-              <span
-                className={cn(
-                  "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[9px] transition-all duration-500",
-                  i < step && "border-primary bg-primary text-primary-foreground",
-                  i === step && "border-primary text-primary shadow-[0_0_12px_rgba(0,194,168,0.6)]",
-                  i > step && "border-neutral-700 text-neutral-600",
-                )}
-              >
-                {i < step ? "✓" : i + 1}
-              </span>
-              <div className={cn("min-w-0 transition-opacity duration-500", i > step && "opacity-35")}>
-                <div className="text-[11px] font-semibold text-white">{s.title}</div>
-                {i === step && <div className="text-[10px] leading-snug text-neutral-400">{s.body}</div>}
-              </div>
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      <div className="phone-widget widget-depth rounded-2xl p-3">
-        <div className="text-[9px] uppercase tracking-wider text-primary">Agent reasoning</div>
-        <p key={current.key} className="mt-1 text-[10px] leading-snug text-neutral-300 animate-[fadeIn_0.5s_ease]">
-          {current.detail}
-        </p>
-      </div>
-    </div>
-  );
 }
 
 /** Full-width stepper for the "How it works" section. */
