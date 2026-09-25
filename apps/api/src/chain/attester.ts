@@ -104,8 +104,21 @@ export class ViemAttester implements Attester {
   resolveDispute(invoiceHash: Hex) {
     return this.write(this.paymentRecord, paymentRecordAbi, "resolveDispute", [invoiceHash]);
   }
-  anchor(chainHead: Hex, count: bigint) {
-    return this.write(this.decisionAnchor, decisionAnchorAbi, "anchor", [chainHead, count]);
+  async anchor(chainHead: Hex, count: bigint) {
+    const res = await this.write(this.decisionAnchor, decisionAnchorAbi, "anchor", [chainHead, count]);
+    if (res !== "ALREADY_DONE") return res;
+    // CountNotIncreasing is only "already done" if the onchain head is ours. Otherwise the local log was
+    // reset (or diverged) and silently skipping would make the anchor meaningless.
+    const latest = (await this.publicClient.readContract({
+      address: this.decisionAnchor,
+      abi: decisionAnchorAbi,
+      functionName: "latest",
+    })) as { chainHead: Hex; count: bigint };
+    if (latest.count === count && latest.chainHead.toLowerCase() === chainHead.toLowerCase()) return "ALREADY_DONE";
+    throw new Error(
+      `DecisionAnchor is at count ${latest.count} (head ${latest.chainHead}) but the local log is at ${count}. ` +
+        "The local decision log was probably reset; deploy a fresh DecisionAnchor for this database.",
+    );
   }
 }
 
