@@ -30,8 +30,12 @@ function refs(s: Snapshot, wanted: string[]): string[] {
 function setTerms(s: Snapshot, p: Policy): AgentProposal {
   const e = s.evidence;
   const available = e["stat:network_score_available"] === true;
-  const onTime = available ? num(e["stat:network_on_time_rate"]) : num(e["stat:private_on_time_rate"]);
-  const avgLate = available ? num(e["stat:network_avg_days_late"]) : num(e["stat:private_avg_days_late"]);
+  const src = available ? "network" : "private";
+  // Reliability (decayed, graded) is the headline; fall back to the plain rate if absent.
+  const onTime = num(e[`stat:${src}_reliability`]) ?? num(e[`stat:${src}_on_time_rate`]);
+  const avgLate = num(e[`stat:${src}_avg_days_late`]);
+  const trend = e[`stat:${src}_trend`];
+  const recent = e[`stat:${src}_recent_on_time`];
   const shortfall = big(e["forecast:shortfall_total_minor"]);
   const amount = big(e["invoice:amount_minor"]);
 
@@ -42,23 +46,35 @@ function setTerms(s: Snapshot, p: Policy): AgentProposal {
     discount = 0;
     why = "There isn't enough payment history for this client yet, so standard 14-day terms apply";
     confidence = 0.5;
-  } else if (onTime >= 0.85 && (avgLate ?? 0) <= 2) {
+  } else if (onTime >= 0.85 && trend !== "declining") {
     net = 30;
     deposit = 0;
     discount = shortfall > 0n ? 100 : 0;
-    why = `The client pays on time ${Math.round(onTime * 100)}% of the time, so longer terms with no deposit are low risk`;
+    why =
+      trend === "improving"
+        ? `The client's recent record is strong (${recent ?? "recent invoices"} on time, reliability ${Math.round(onTime * 100)}%) after earlier late payments, so they've earned standard long terms again`
+        : `The client's reliability is ${Math.round(onTime * 100)}%, so longer terms with no deposit are low risk`;
     confidence = 0.75;
+  } else if (trend === "improving") {
+    net = 14;
+    deposit = 0;
+    discount = shortfall > 0n ? 100 : 0;
+    why = `The client is improving (${recent ?? "recent invoices"} on time) but their reliability is still ${Math.round(onTime * 100)}%, so standard 14-day terms with no deposit apply as a next step`;
+    confidence = 0.6;
   } else if (onTime < 0.6 || (avgLate ?? 0) > 7) {
     net = 7;
     deposit = 3_000;
     discount = 0;
-    why = `The client pays on time only ${Math.round(onTime * 100)}% of the time (about ${avgLate ?? "?"} days late on average), so short terms and a deposit protect the freelancer`;
+    why = `The client's reliability is only ${Math.round(onTime * 100)}% (about ${avgLate ?? "?"} days late on average), so short terms and a deposit protect the freelancer. Paying on time under these terms rebuilds their score`;
     confidence = 0.7;
   } else {
     net = 14;
     deposit = 0;
     discount = shortfall > 0n ? 100 : 0;
-    why = `The client's record is mixed (${Math.round(onTime * 100)}% on time), so standard 14-day terms apply`;
+    why =
+      trend === "declining"
+        ? `The client's recent payments are worse than their history (${recent ?? "recent invoices"} on time, reliability ${Math.round(onTime * 100)}%), so terms tighten to 14 days`
+        : `The client's record is mixed (reliability ${Math.round(onTime * 100)}%), so standard 14-day terms apply`;
     confidence = 0.6;
   }
   if (shortfall > 0n && discount > 0) why += "; a small early-pay discount helps cover the freelancer's upcoming cash shortfall";
@@ -73,7 +89,9 @@ function setTerms(s: Snapshot, p: Policy): AgentProposal {
     },
     reasoning: `${why}. (Deterministic rule, not the model.)`,
     evidence_refs: refs(s, [
-      available ? "stat:network_on_time_rate" : "stat:private_on_time_rate",
+      `stat:${src}_reliability`,
+      `stat:${src}_trend`,
+      `stat:${src}_recent_on_time`,
       "stat:network_score_available",
       "forecast:shortfall_total_minor",
     ]),

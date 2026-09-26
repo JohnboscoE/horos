@@ -192,6 +192,8 @@ describe("end to end (offline)", () => {
     const s = await request(app).get("/api/clients/good-payer-inc/score");
     expect(s.body.insufficientData).toBe(false);
     expect(s.body.score.onTimeRate).toBe(1);
+    expect(s.body.score.reliability).toBe(1);
+    expect(s.body.score.recent).toEqual({ onTime: 3, total: 3 });
     expect(s.body.score.distinctFreelancers).toBe(2);
   });
 

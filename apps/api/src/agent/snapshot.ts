@@ -17,9 +17,14 @@ export function statsEvidence(prefix: "network" | "private", s: ClientStats | nu
   if (!s) return { [`stat:${prefix}_invoice_count`]: 0 };
   const e: Snapshot["evidence"] = {
     [`stat:${prefix}_invoice_count`]: s.invoiceCount,
+    // Headline: time-decayed (90-day half-life), graded by how late. Recent behaviour dominates.
+    [`stat:${prefix}_reliability`]: s.reliability,
     [`stat:${prefix}_on_time_rate`]: s.onTimeRate,
+    [`stat:${prefix}_recent_on_time`]: s.recent.total ? `${s.recent.onTime}/${s.recent.total}` : null,
+    [`stat:${prefix}_trend`]: s.trend,
     [`stat:${prefix}_avg_days_late`]: s.avgDaysLate,
     [`stat:${prefix}_open_overdue`]: s.openOverdueCount,
+    [`stat:${prefix}_on_time_under_strict_terms`]: s.onTimeUnderStrictTerms,
   };
   if (prefix === "network") {
     e["stat:network_distinct_freelancers"] = s.distinctFreelancers;

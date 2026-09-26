@@ -32,7 +32,8 @@ export async function freelancerForecast(q: Queryable, freelancerId: string, now
       const net = await networkStats(q, r.client_id, now);
       const priv = await privateStats(q, freelancerId, r.client_id, now);
       const use = net.displayable ? net : priv;
-      statsCache.set(r.client_id, { avgLate: use.avgDaysLate ?? 0, onTime: use.onTimeRate });
+      // Reliability (decayed, graded) ranks who gets early-pay offers; recent behaviour matters most.
+      statsCache.set(r.client_id, { avgLate: use.avgDaysLate ?? 0, onTime: use.reliability ?? use.onTimeRate });
     }
     const s = statsCache.get(r.client_id)!;
     const outstanding = minorFromString(r.amount_minor) - minorFromString(r.paid_minor);

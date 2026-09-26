@@ -5,10 +5,18 @@ import type { PolicyRow } from "../db/rows.js";
 
 const secs = (d: Date | string | null) => (d === null ? null : Math.floor(new Date(d).getTime() / 1000));
 
+/** Probation-style terms: a deposit, or net 7 or shorter. Paying on time under these rebuilds trust. */
+export const STRICT_NET_DAYS = 7;
+function isStrict(terms: { deposit_bps?: number; net_days?: number } | null | undefined): boolean {
+  return !!terms && ((terms.deposit_bps ?? 0) > 0 || (terms.net_days ?? Infinity) <= STRICT_NET_DAYS);
+}
+
 /** Shared network record: verified, client-acknowledged entries across all freelancers. */
 export async function networkStats(q: Queryable, clientId: string, now: Date): Promise<ClientStats> {
-  const rows = await q.query<{ freelancer_id: string; due_date: Date; paid_at: Date | null; disputed: boolean }>(
-    "SELECT freelancer_id, due_date, paid_at, disputed FROM record_entries WHERE client_id = $1 AND verified = TRUE",
+  const rows = await q.query<{ freelancer_id: string; due_date: Date; paid_at: Date | null; disputed: boolean; terms_json: { deposit_bps?: number; net_days?: number } | null }>(
+    `SELECT r.freelancer_id, r.due_date, r.paid_at, r.disputed, i.terms_json
+     FROM record_entries r LEFT JOIN invoices i ON i.id = r.invoice_id
+     WHERE r.client_id = $1 AND r.verified = TRUE`,
     [clientId],
   );
   const facts: RecordFact[] = rows.map((r) => ({
@@ -17,14 +25,15 @@ export async function networkStats(q: Queryable, clientId: string, now: Date): P
     paidAt: secs(r.paid_at),
     acknowledged: true,
     disputed: r.disputed,
+    strictTerms: isStrict(r.terms_json),
   }));
   return computeClientStats(facts, secs(now)!);
 }
 
 /** This freelancer's own history with the client (includes unacknowledged invoices and imported history). */
 export async function privateStats(q: Queryable, freelancerId: string, clientId: string, now: Date, excludeInvoiceId?: string): Promise<ClientStats> {
-  const rows = await q.query<{ due_date: Date; paid_at: Date | null; status: string }>(
-    `SELECT due_date, paid_at, status FROM invoices
+  const rows = await q.query<{ due_date: Date; paid_at: Date | null; status: string; terms_json: { deposit_bps?: number; net_days?: number } | null }>(
+    `SELECT due_date, paid_at, status, terms_json FROM invoices
      WHERE freelancer_id = $1 AND client_id = $2 AND due_date IS NOT NULL AND status NOT IN ('CANCELLED', 'DRAFT') AND id <> $3`,
     [freelancerId, clientId, excludeInvoiceId ?? ""],
   );
@@ -33,7 +42,7 @@ export async function privateStats(q: Queryable, freelancerId: string, clientId:
     [clientId, freelancerId],
   );
   const facts: RecordFact[] = [
-    ...rows.map((r) => ({ freelancerId, dueDate: secs(r.due_date)!, paidAt: secs(r.paid_at), acknowledged: true, disputed: r.status === "DISPUTED" })),
+    ...rows.map((r) => ({ freelancerId, dueDate: secs(r.due_date)!, paidAt: secs(r.paid_at), acknowledged: true, disputed: r.status === "DISPUTED", strictTerms: isStrict(r.terms_json) })),
     ...imported.map((r) => ({ freelancerId, dueDate: secs(r.due_date)!, paidAt: secs(r.paid_at), acknowledged: true, disputed: r.disputed })),
   ];
   return computeClientStats(facts, secs(now)!);

@@ -17,6 +17,8 @@ Decision types:
 How to weigh evidence:
 - Network stats (stat:network_*) come from the shared record of client-acknowledged invoices across many freelancers. If stat:network_score_available is false, there is not enough data: treat the client as new and do not treat missing data as bad behaviour.
 - Private stats (stat:private_*) are this freelancer's own history with the client.
+- *_reliability is the headline score (0 to 1). It is time-decayed with a 90-day half-life and graded by how late (a day late costs far less than a month late; unpaid overdue counts fully). Prefer it over *_on_time_rate, which is an unweighted lifetime average.
+- Clients can rebuild credibility. If *_trend is "improving" or *_recent_on_time shows a clean recent streak, relax terms step by step even if the lifetime rate is still low, and say so in the reasoning. On-time payments under strict terms (*_on_time_under_strict_terms) are deliberate trust-building; reward them. A "declining" trend is a reason to tighten, even for a client with a good lifetime rate.
 - Confidence matters: a single late payment is weak evidence. Don't demand deposits from good clients because of one data point.
 - Cash needs and forecast (cash_need:*, forecast:*) describe the freelancer's upcoming obligations.
 
