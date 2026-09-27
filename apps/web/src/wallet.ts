@@ -1,10 +1,8 @@
 import { createWalletClient, custom, defineChain, parseAbi, type Address, type WalletClient } from "viem";
 
-declare global {
-  interface Window {
-    ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
-  }
-}
+// window.ethereum is declared globally by the Privy SDK (as `any`); narrow it locally instead.
+type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
+const injected = (): Eip1193 | undefined => (window as { ethereum?: Eip1193 }).ethereum;
 
 export function arcChain(chainId: number, explorer: string) {
   return defineChain({
@@ -17,9 +15,10 @@ export function arcChain(chainId: number, explorer: string) {
 }
 
 export async function connect(chainId: number, explorer: string): Promise<{ wallet: WalletClient; account: Address }> {
-  if (!window.ethereum) throw new Error("No browser wallet found. Install MetaMask or Rabby, or acknowledge by email.");
+  const provider = injected();
+  if (!provider) throw new Error("No browser wallet found. Install MetaMask or Rabby, or acknowledge by email.");
   const chain = arcChain(chainId, explorer);
-  const wallet = createWalletClient({ chain, transport: custom(window.ethereum) });
+  const wallet = createWalletClient({ chain, transport: custom(provider) });
   const [account] = await wallet.requestAddresses();
   if (!account) throw new Error("No account selected");
   try {

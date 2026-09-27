@@ -1,9 +1,11 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api, auth } from "../api";
+import { useAuth, useOnboardingGuard } from "../auth";
 
 export function Layout() {
-  const nav = useNavigate();
+  const { signOut } = useAuth();
+  useOnboardingGuard();
   const [health, setHealth] = useState<any>(null);
   useEffect(() => {
     api("/api/health").then(setHealth).catch(() => setHealth(null));
@@ -38,7 +40,7 @@ export function Layout() {
               </span>
             )}
             {authed && (
-              <button className="btn-ghost px-3 py-1" onClick={() => { auth.clear(); nav("/"); }}>
+              <button className="btn-ghost px-3 py-1" onClick={() => void signOut()}>
                 Sign out
               </button>
             )}

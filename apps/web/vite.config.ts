@@ -5,6 +5,8 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // One .env at the repo root. Only VITE_* variables are exposed to the browser.
+  envDir: fileURLToPath(new URL("../..", import.meta.url)),
   resolve: {
     // shadcn convention: "@/components/ui/...", "@/lib/utils"
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },

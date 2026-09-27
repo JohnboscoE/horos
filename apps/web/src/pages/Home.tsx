@@ -5,6 +5,7 @@ import { ErrorNote } from "@/ui/bits";
 import { ResponsiveHeroBanner } from "@/components/ui/responsive-hero-banner";
 import { FLOW_STEPS, FlowStepper, useFlowStep } from "@/components/ui/flow-simulation";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/auth";
 
 // Dark, blue-teal photo of Earth at night with network lines (Unsplash).
 const HERO_IMAGE =
@@ -137,13 +138,7 @@ function LiveFlowStrip() {
 }
 
 function Signup() {
-  const nav = useNavigate();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
+  const { mode } = useAuth();
   if (auth.get()) {
     return (
       <div className="card h-fit space-y-3">
@@ -152,51 +147,104 @@ function Signup() {
       </div>
     );
   }
-
   return (
     <div className="space-y-4">
-      <form
-        className="card space-y-3"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          setErr(null);
-          try {
-            const r = await api("/api/signup", { body: { name, email } });
-            auth.set(r.token);
-            nav("/dashboard");
-          } catch (e) {
-            setErr((e as Error).message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
+      {mode === "privy" ? <PrivySignup /> : <DevSignup />}
+      <DevTokenLogin collapsed={mode === "privy"} />
+    </div>
+  );
+}
+
+/** Privy: email, Google or wallet. First sign-in creates the account, then onboarding asks for a name. */
+function PrivySignup() {
+  const { startSignIn, busy, error } = useAuth();
+  return (
+    <div className="card space-y-4">
+      <div>
         <h3 className="font-semibold">Start as a freelancer</h3>
-        <div>
-          <label className="label">Name</label>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
-        </div>
-        <div>
-          <label className="label">Email</label>
-          <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </div>
-        <ErrorNote error={err} />
-        <button className="btn w-full" disabled={busy}>{busy ? "Creating your wallet…" : "Create account"}</button>
-        <p className="text-xs text-muted-foreground">A Circle wallet is created for you on Arc.</p>
-      </form>
-      <form
-        className="card space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          auth.set(token.trim());
+        <p className="mt-1 text-sm text-muted-foreground">
+          Sign in with your email, Google, or a wallet. Next you'll choose the name clients see, and we'll set up your Circle wallet on Arc.
+        </p>
+      </div>
+      <ErrorNote error={error} />
+      <button className="btn w-full" onClick={startSignIn} disabled={busy}>
+        {busy ? "Setting up your account…" : "Continue with email, Google or wallet"}
+      </button>
+      <p className="text-xs text-muted-foreground">Secured by Privy. Horos never sees your password or wallet keys.</p>
+    </div>
+  );
+}
+
+/** Dev fallback when Privy isn't configured. */
+function DevSignup() {
+  const nav = useNavigate();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="card space-y-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setErr(null);
+        try {
+          const r = await api("/api/signup", { body: { name, email } });
+          auth.set(r.token);
           nav("/dashboard");
-        }}
-      >
-        <h3 className="font-semibold">Have an access token?</h3>
-        <input className="input mono" value={token} onChange={(e) => setToken(e.target.value)} placeholder="paste token" />
-        <button className="btn-ghost w-full">Sign in</button>
-      </form>
+        } catch (e) {
+          setErr((e as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <h3 className="font-semibold">Start as a freelancer</h3>
+      <div>
+        <label className="label">Name</label>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
+      </div>
+      <div>
+        <label className="label">Email</label>
+        <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      </div>
+      <ErrorNote error={err} />
+      <button className="btn w-full" disabled={busy}>{busy ? "Creating your wallet…" : "Create account"}</button>
+      <p className="text-xs text-muted-foreground">Dev sign-up (Privy isn't configured). A Circle wallet is created for you on Arc.</p>
+    </form>
+  );
+}
+
+/** Access-token sign-in for seeded demo accounts. */
+function DevTokenLogin({ collapsed }: { collapsed: boolean }) {
+  const nav = useNavigate();
+  const [token, setToken] = useState("");
+  const form = (
+    <form
+      className="space-y-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        auth.set(token.trim());
+        nav("/dashboard");
+      }}
+    >
+      <input className="input mono" value={token} onChange={(e) => setToken(e.target.value)} placeholder="paste token" />
+      <button className="btn-ghost w-full">Sign in</button>
+    </form>
+  );
+  if (collapsed) {
+    return (
+      <details className="card text-sm">
+        <summary className="cursor-pointer text-muted-foreground">Have a demo access token?</summary>
+        <div className="mt-3">{form}</div>
+      </details>
+    );
+  }
+  return (
+    <div className="card space-y-3">
+      <h3 className="font-semibold">Have an access token?</h3>
+      {form}
     </div>
   );
 }

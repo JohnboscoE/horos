@@ -8,7 +8,8 @@ import type { MockChain } from "./chain/reader.js";
 import type { DecisionRow, FreelancerRow, InvoiceRow, RefundRow } from "./db/rows.js";
 import { HttpError } from "./errors.js";
 import { newId } from "./context.js";
-import { authenticate, signup, updatePolicy } from "./services/freelancers.js";
+import { authenticate, loginWithPrivy, signup, updatePolicy, updateProfile } from "./services/freelancers.js";
+import { verifyPrivyToken } from "./services/privyAuth.js";
 import { acknowledgeByEmail, acknowledgeInvoice, ackTypedData, amountDue, createInvoice, getInvoice, setManualTerms } from "./services/invoices.js";
 import { approveDecision, rejectDecision } from "./services/agent.js";
 import { confirmRefundAddress } from "./services/refunds.js";
@@ -64,15 +65,35 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
       attester: ctx.attester.enabled ? "onchain" : "mock",
       agent: ctx.model?.name ?? "mock",
       onramp: onrampMode(ctx),
+      auth: ctx.cfg.privy ? "privy" : "dev",
       killSwitch: ctx.cfg.killSwitch,
       unverifiedConfig: ctx.cfg.network.unverified,
       disclaimer: DISCLAIMER,
     });
   });
 
+  // Dev/fallback signup. With Privy configured it's only open in mock mode (seed script, tests),
+  // so real accounts always go through Privy.
   app.post("/api/signup", async (req, res) => {
+    if (ctx.cfg.privy && ctx.circle.kind !== "mock") throw new HttpError(404, "Sign up with Privy");
     const b = body(z.object({ name: z.string().min(1).max(80), email: z.string().email(), isSelfTest: z.boolean().optional() }), req);
     res.status(201).json(await signup(ctx, b));
+  });
+
+  // Privy login: exchange a verified Privy access token for a Horos session. Creates the account on first login.
+  app.post("/api/auth/privy", async (req, res) => {
+    const h = req.header("authorization");
+    const { privyUserId } = await verifyPrivyToken(ctx.cfg, h?.startsWith("Bearer ") ? h.slice(7) : "");
+    const b = body(
+      z.object({
+        hints: z
+          .object({ name: z.string().max(120).optional(), email: z.string().max(254).optional(), wallet: z.string().max(64).optional() })
+          .default({}),
+      }),
+      req,
+    );
+    const out = await loginWithPrivy(ctx, privyUserId, b.hints);
+    res.status(out.created ? 201 : 200).json(out);
   });
 
   app.get("/api/metrics", async (_req, res) => res.json(await metrics(ctx)));
@@ -212,7 +233,15 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
     const f = me(req);
     const [policy] = await ctx.db.query("SELECT * FROM policies WHERE freelancer_id = $1", [f.id]);
     const [cash] = await ctx.db.query<{ cash_on_hand_minor: string }>("SELECT cash_on_hand_minor FROM freelancers WHERE id = $1", [f.id]);
-    res.json({ freelancer: f, policy, cashOnHand: formatAmount(minorFromString(cash!.cash_on_hand_minor)) });
+    const [{ onboarded_at } = { onboarded_at: null }] = await ctx.db.query<{ onboarded_at: Date | null }>("SELECT onboarded_at FROM freelancers WHERE id = $1", [f.id]);
+    res.json({ freelancer: f, policy, cashOnHand: formatAmount(minorFromString(cash!.cash_on_hand_minor)), needsOnboarding: !onboarded_at });
+  });
+
+  /** Onboarding step and later edits: set the display name clients see on invoices. */
+  app.put("/api/me/profile", auth, async (req, res) => {
+    const b = body(z.object({ name: z.string() }), req);
+    const f = await updateProfile(ctx, me(req).id, b.name);
+    res.json({ freelancer: f, needsOnboarding: false });
   });
 
   app.put("/api/me/policy", auth, async (req, res) => {

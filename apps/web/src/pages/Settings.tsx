@@ -3,6 +3,8 @@ import { api, date, fmt } from "../api";
 import { ErrorNote, Section } from "../ui/bits";
 
 export function Settings() {
+  const [profileName, setProfileName] = useState("");
+  const [wallet, setWallet] = useState<string | null>(null);
   const [policy, setPolicy] = useState<any>(null);
   const [cash, setCash] = useState("0");
   const [needs, setNeeds] = useState<any[]>([]);
@@ -13,6 +15,8 @@ export function Settings() {
 
   const load = async () => {
     const [me, n, fc] = await Promise.all([api("/api/me"), api("/api/me/cash-needs"), api("/api/me/forecast")]);
+    setProfileName(me.freelancer.name);
+    setWallet(me.freelancer.main_wallet_address);
     const p = me.policy;
     setPolicy({
       minTermsDays: p.min_terms_days,
@@ -56,6 +60,30 @@ export function Settings() {
     <div className="space-y-8">
       <ErrorNote error={err} />
       {saved && <div className="text-sm text-accent">{saved}</div>}
+      <Section title="Profile">
+        <form
+          className="card flex flex-wrap items-end gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save(() => api("/api/me/profile", { method: "PUT", body: { name: profileName } }), "Name updated");
+          }}
+        >
+          <div className="min-w-[220px] flex-1">
+            <label className="label" htmlFor="profile-name">Display name (shown to clients on invoices)</label>
+            <input id="profile-name" className="input" value={profileName} maxLength={80} onChange={(e) => setProfileName(e.target.value)} />
+          </div>
+          <button className="btn-ghost" disabled={!profileName.trim()}>Save name</button>
+          {wallet && (
+            <div className="w-full text-xs text-muted-foreground">
+              Circle wallet on Arc: <span className="mono text-foreground">{wallet}</span>
+            </div>
+          )}
+          <p className="w-full text-xs text-muted-foreground">
+            Invoices already sent keep the name the client signed. The new name applies to new invoices.
+          </p>
+        </form>
+      </Section>
+
       <Section title="Policy bounds: the agent auto-applies only inside these">
         <form
           className="card grid gap-3 sm:grid-cols-3 lg:grid-cols-6"

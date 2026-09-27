@@ -233,3 +233,13 @@ CREATE TABLE IF NOT EXISTS kv (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- ---- Migrations (idempotent; safe to re-run on every boot) ---------------------------------
+
+-- 2026-09-27: Privy login + onboarding. Identity is the Privy user id (did:privy:…); email is an
+-- optional contact hint (wallet-only logins have none).
+ALTER TABLE freelancers ADD COLUMN IF NOT EXISTS privy_user_id TEXT UNIQUE;
+ALTER TABLE freelancers ADD COLUMN IF NOT EXISTS onboarded_at TIMESTAMPTZ;
+ALTER TABLE freelancers ALTER COLUMN email DROP NOT NULL;
+-- Accounts created before onboarding existed (email signup) are already onboarded.
+UPDATE freelancers SET onboarded_at = created_at WHERE onboarded_at IS NULL AND privy_user_id IS NULL;

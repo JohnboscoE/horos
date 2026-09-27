@@ -37,6 +37,11 @@ const EnvSchema = z.object({
   ANTHROPIC_MODEL: z.string().default("claude-opus-5"),
   MOCK_AGENT: bool,
 
+  PRIVY_APP_ID: optionalString,
+  /** Privy's verification key (PEM, from the Privy dashboard). If unset, keys are fetched from JWKS. */
+  PRIVY_VERIFICATION_KEY: optionalString,
+  PRIVY_JWKS_URL: optionalString,
+
   ONRAMP_ENABLED: z
     .string()
     .optional()
@@ -64,6 +69,8 @@ export interface AppConfig {
   paymentRecord: Address | undefined;
   decisionAnchor: Address | undefined;
   anthropic: { apiKey: string; model: string } | null;
+  /** Privy login. null → dev fallback (email signup, access tokens). */
+  privy: { appId: string; verificationKey: string | undefined; jwksUrl: string } | null;
   /** Arc App Kit Onramp (pay by card). `live` needs an API key; `preview` simulates locally. */
   onramp: { mode: "live"; apiKey: string; referrerDomain: string } | { mode: "preview" } | { mode: "off" };
   killSwitch: boolean;
@@ -105,6 +112,14 @@ export function loadConfig(raw: NodeJS.ProcessEnv = process.env): AppConfig {
     paymentRecord: env.PAYMENT_RECORD_ADDRESS as Address | undefined,
     decisionAnchor: env.DECISION_ANCHOR_ADDRESS as Address | undefined,
     anthropic: useModel ? { apiKey: env.ANTHROPIC_API_KEY!, model: env.ANTHROPIC_MODEL } : null,
+    privy: env.PRIVY_APP_ID
+      ? {
+          appId: env.PRIVY_APP_ID,
+          // PEM keys pasted into .env often have literal "\n"; normalize.
+          verificationKey: env.PRIVY_VERIFICATION_KEY?.replace(/\\n/g, "\n"),
+          jwksUrl: env.PRIVY_JWKS_URL ?? `https://auth.privy.io/api/v1/apps/${env.PRIVY_APP_ID}/jwks.json`,
+        }
+      : null,
     onramp: !env.ONRAMP_ENABLED
       ? { mode: "off" }
       : (env.ONRAMP_API_KEY ?? env.CIRCLE_API_KEY) && !env.MOCK_CIRCLE
