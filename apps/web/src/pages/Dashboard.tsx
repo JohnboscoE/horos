@@ -26,8 +26,14 @@ export function Dashboard() {
     }
   };
   useEffect(() => {
-    if (!auth.get()) nav("/");
-    else load();
+    if (!auth.get()) {
+      nav("/");
+      return;
+    }
+    load();
+    // Payments land in the background; keep the list current without a manual reload.
+    const t = setInterval(load, 15_000);
+    return () => clearInterval(t);
   }, []);
 
   const create = async (e: React.FormEvent) => {

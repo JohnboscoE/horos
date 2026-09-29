@@ -7,6 +7,30 @@ export const auth = {
   clear: () => localStorage.removeItem(TOKEN_KEY),
 };
 
+/** Client (payer) session, separate from the freelancer session. */
+const CLIENT_TOKEN_KEY = "horos_client_token";
+export const clientAuth = {
+  get: () => localStorage.getItem(CLIENT_TOKEN_KEY),
+  set: (t: string) => localStorage.setItem(CLIENT_TOKEN_KEY, t),
+  clear: () => localStorage.removeItem(CLIENT_TOKEN_KEY),
+};
+
+/** Calls an API route with the client session instead of the freelancer one. */
+export async function clientApi<T = any>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (init.body !== undefined) headers["content-type"] = "application/json";
+  const t = clientAuth.get();
+  if (t) headers.authorization = `Bearer ${t}`;
+  const res = await fetch(`${BASE}${path}`, {
+    method: init.method ?? (init.body !== undefined ? "POST" : "GET"),
+    headers,
+    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText);
+  return data as T;
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);

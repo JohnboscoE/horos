@@ -31,9 +31,42 @@ let running: Promise<unknown> = Promise.resolve();
  * it twice (once via its log, once as unattributed). Run a single worker process per database.
  */
 export function watchOnce(ctx: Ctx): Promise<{ block: bigint; detected: number; anomalies: string[] }> {
-  const next = running.then(() => watchPass(ctx));
+  return withWatcherLock(() => watchPass(ctx));
+}
+
+/** Runs `fn` in the watcher's queue, so nothing else that records payments overlaps a watcher pass. */
+export function withWatcherLock<T>(fn: () => Promise<T>): Promise<T> {
+  const next = running.then(fn);
   running = next.catch(() => {});
   return next;
+}
+
+/**
+ * The client reports the transaction they just sent. We read it from the chain ourselves and record
+ * only USDC transfers to this invoice's deposit address, so the client can't claim anything that
+ * didn't happen. Idempotent with the watcher (same UNIQUE(tx_hash, log_index), same queue).
+ */
+export async function recordReportedPayment(
+  ctx: Ctx,
+  invoice: { id: string; deposit_address: string; currency: "USDC" | "EURC" },
+  txHash: `0x${string}`,
+): Promise<{ state: "recorded" | "already_recorded" | "pending" | "no_transfer"; amountMinor: bigint }> {
+  const token = invoice.currency === "USDC" ? ctx.cfg.network.usdc : ctx.cfg.network.eurc;
+  if (!token) return { state: "no_transfer", amountMinor: 0n };
+  return withWatcherLock(async () => {
+    const transfers = await ctx.chain.transfersInTx(txHash, token);
+    if (transfers === null) return { state: "pending" as const, amountMinor: 0n };
+    const mine = transfers.filter((t) => t.to.toLowerCase() === invoice.deposit_address.toLowerCase() && t.amount > 0n);
+    if (mine.length === 0) return { state: "no_transfer" as const, amountMinor: 0n };
+    const amountMinor = mine.reduce((s, t) => s + t.amount, 0n);
+    const inserted = await ingestPayments(
+      ctx,
+      invoice.id,
+      mine.map((t) => ({ txHash: t.txHash, logIndex: t.logIndex, from: t.from, amount: t.amount, attributed: true })),
+      mine[0]!.blockNumber,
+    );
+    return { state: inserted > 0 ? ("recorded" as const) : ("already_recorded" as const), amountMinor };
+  });
 }
 
 async function watchPass(ctx: Ctx): Promise<{ block: bigint; detected: number; anomalies: string[] }> {

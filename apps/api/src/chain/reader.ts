@@ -1,4 +1,4 @@
-import { createPublicClient, fallback, http, type Address, type PublicClient } from "viem";
+import { createPublicClient, fallback, http, parseEventLogs, type Address, type PublicClient } from "viem";
 import type { NetworkConfig, ObservedTransfer } from "@horos/core";
 import { erc20Abi } from "./abis.js";
 
@@ -12,6 +12,8 @@ export interface ChainReader {
   latestBlock(): Promise<bigint>;
   tokenBalance(token: Address, owner: Address, blockNumber: bigint): Promise<bigint>;
   incomingTransfers(token: Address, to: Address[], fromBlock: bigint, toBlock: bigint): Promise<IncomingTransfer[]>;
+  /** ERC-20 Transfer logs of `token` in one transaction. null = not mined yet (or unknown); throws if it reverted. */
+  transfersInTx(txHash: `0x${string}`, token: Address): Promise<IncomingTransfer[] | null>;
 }
 
 export function makePublicClient(cfg: NetworkConfig): PublicClient {
@@ -55,6 +57,23 @@ export class RpcChainReader implements ChainReader {
       blockNumber: l.blockNumber,
     }));
   }
+
+  async transfersInTx(txHash: `0x${string}`, token: Address): Promise<IncomingTransfer[] | null> {
+    const receipt = await this.client.getTransactionReceipt({ hash: txHash }).catch(() => null);
+    if (!receipt) return null;
+    if (receipt.status !== "success") throw new Error("That transaction failed on-chain, so no payment was made");
+    const logs = parseEventLogs({ abi: erc20Abi, eventName: "Transfer", logs: receipt.logs }).filter(
+      (l) => l.address.toLowerCase() === token.toLowerCase(),
+    );
+    return logs.map((l) => ({
+      txHash: l.transactionHash,
+      logIndex: l.logIndex,
+      from: l.args.from,
+      to: l.args.to,
+      amount: l.args.value,
+      blockNumber: l.blockNumber,
+    }));
+  }
 }
 
 /**
@@ -84,6 +103,11 @@ export class MockChain implements ChainReader {
   async incomingTransfers(_token: Address, to: Address[], fromBlock: bigint, toBlock: bigint) {
     const set = new Set(to.map((a) => a.toLowerCase()));
     return this.logs.filter((l) => set.has(l.to.toLowerCase()) && l.blockNumber >= fromBlock && l.blockNumber <= toBlock);
+  }
+
+  async transfersInTx(txHash: `0x${string}`) {
+    const logs = this.logs.filter((l) => l.txHash === txHash);
+    return logs.length ? logs : null;
   }
 
   pay(to: Address, amount: bigint, opts: { from?: Address; native?: boolean } = {}): { txHash: `0x${string}` } {

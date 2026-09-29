@@ -1,4 +1,6 @@
-import { createRemoteJWKSet, importSPKI, jwtVerify, type JWTVerifyGetKey, type KeyLike } from "jose";
+import { createRemoteJWKSet, importSPKI, jwtVerify, type JWTVerifyGetKey } from "jose";
+
+type KeyLike = Awaited<ReturnType<typeof importSPKI>>;
 import type { AppConfig } from "../env.js";
 import { HttpError } from "../errors.js";
 

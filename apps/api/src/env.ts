@@ -41,6 +41,8 @@ const EnvSchema = z.object({
   /** Privy's verification key (PEM, from the Privy dashboard). If unset, keys are fetched from JWKS. */
   PRIVY_VERIFICATION_KEY: optionalString,
   PRIVY_JWKS_URL: optionalString,
+  /** Server-side only. Lets the API read a Privy user's *verified* email/wallets (client sign-in by email). */
+  PRIVY_APP_SECRET: optionalString,
 
   ONRAMP_ENABLED: z
     .string()
@@ -70,7 +72,7 @@ export interface AppConfig {
   decisionAnchor: Address | undefined;
   anthropic: { apiKey: string; model: string } | null;
   /** Privy login. null → dev fallback (email signup, access tokens). */
-  privy: { appId: string; verificationKey: string | undefined; jwksUrl: string } | null;
+  privy: { appId: string; verificationKey: string | undefined; jwksUrl: string; appSecret: string | undefined } | null;
   /** Arc App Kit Onramp (pay by card). `live` needs an API key; `preview` simulates locally. */
   onramp: { mode: "live"; apiKey: string; referrerDomain: string } | { mode: "preview" } | { mode: "off" };
   killSwitch: boolean;
@@ -118,6 +120,7 @@ export function loadConfig(raw: NodeJS.ProcessEnv = process.env): AppConfig {
           // PEM keys pasted into .env often have literal "\n"; normalize.
           verificationKey: env.PRIVY_VERIFICATION_KEY?.replace(/\\n/g, "\n"),
           jwksUrl: env.PRIVY_JWKS_URL ?? `https://auth.privy.io/api/v1/apps/${env.PRIVY_APP_ID}/jwks.json`,
+          appSecret: env.PRIVY_APP_SECRET,
         }
       : null,
     onramp: !env.ONRAMP_ENABLED

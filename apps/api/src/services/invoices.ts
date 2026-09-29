@@ -80,8 +80,8 @@ export async function createInvoice(ctx: Ctx, freelancerId: string, input: Creat
   const wallet = await ctx.circle.createWallet(id, `horos-deposit-${id}`);
   await ctx.db.query(
     `INSERT INTO invoices (id, freelancer_id, client_id, currency, amount_minor, description, status,
-                           deposit_wallet_id, deposit_address, pay_token, is_self_test, network, issued_at)
-     VALUES ($1,$2,$3,$4,$5,$6,'DRAFT',$7,$8,$9,$10,$11,$12)`,
+                           deposit_wallet_id, deposit_address, pay_token, is_self_test, network, issued_at, client_email)
+     VALUES ($1,$2,$3,$4,$5,$6,'DRAFT',$7,$8,$9,$10,$11,$12,$13)`,
     [
       id,
       freelancerId,
@@ -95,6 +95,7 @@ export async function createInvoice(ctx: Ctx, freelancerId: string, input: Creat
       input.isSelfTest ?? false,
       ctx.cfg.network.network,
       ctx.now(),
+      input.clientEmail?.trim().toLowerCase() || null,
     ],
   );
   const invoice = await getInvoice(ctx.db, id);

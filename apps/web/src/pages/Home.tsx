@@ -26,6 +26,7 @@ export function Home() {
         navLinks={[
           { label: "Home", href: "/", isActive: true },
           { label: "How it works", href: "#how" },
+          { label: "For clients", href: "/client" },
           { label: "Decision log", href: "/log" },
           { label: "Metrics", href: "/metrics" },
         ]}
@@ -167,7 +168,7 @@ function PrivySignup() {
         </p>
       </div>
       <ErrorNote error={error} />
-      <button className="btn w-full" onClick={startSignIn} disabled={busy}>
+      <button className="btn w-full" onClick={() => startSignIn("freelancer")} disabled={busy}>
         {busy ? "Setting up your account…" : "Continue with email, Google or wallet"}
       </button>
       <p className="text-xs text-muted-foreground">Secured by Privy. Horos never sees your password or wallet keys.</p>

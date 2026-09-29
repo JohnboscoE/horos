@@ -14,6 +14,16 @@ export function arcChain(chainId: number, explorer: string) {
   });
 }
 
+/** Connect a browser wallet without switching networks (enough to sign a message). */
+export async function connectAccount(): Promise<{ wallet: WalletClient; account: Address }> {
+  const provider = injected();
+  if (!provider) throw new Error("No browser wallet found. Install MetaMask or Rabby.");
+  const wallet = createWalletClient({ transport: custom(provider) });
+  const [account] = await wallet.requestAddresses();
+  if (!account) throw new Error("No account selected");
+  return { wallet, account };
+}
+
 export async function connect(chainId: number, explorer: string): Promise<{ wallet: WalletClient; account: Address }> {
   const provider = injected();
   if (!provider) throw new Error("No browser wallet found. Install MetaMask or Rabby, or acknowledge by email.");

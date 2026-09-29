@@ -1,20 +1,26 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
-import { api, auth as session } from "@/api";
+import { api, auth as session, clientAuth } from "@/api";
 
 /**
- * Sign-in. With VITE_PRIVY_APP_ID set, freelancers sign in with Privy (email, Google or wallet) and the
- * Privy session is exchanged for a Horos session (POST /api/auth/privy). Without it, the dev fallback
- * (email signup / pasted access token) is used.
+ * Sign-in. With VITE_PRIVY_APP_ID set, people sign in with Privy (email, Google or wallet) and the
+ * Privy session is exchanged for a Horos session:
+ *   freelancer → POST /api/auth/privy         (creates the freelancer account on first login)
+ *   client     → POST /api/client/auth/privy  (identities read from Privy's server; never creates a freelancer)
+ * The chosen role is remembered so a reload never turns a client into a freelancer.
+ * Without Privy, the dev fallback (email signup / pasted token; wallet sign-in for clients) is used.
  */
 
 const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID as string | undefined;
+const ROLE_KEY = "horos_privy_role";
+type Role = "freelancer" | "client";
+const getRole = (): Role => (localStorage.getItem(ROLE_KEY) === "client" ? "client" : "freelancer");
 
 interface AuthApi {
   mode: "privy" | "dev";
-  /** Opens Privy's login (privy mode). No-op in dev mode, where the signup form is used. */
-  startSignIn: () => void;
+  /** Opens Privy's login (privy mode). No-op in dev mode, where the signup forms are used. */
+  startSignIn: (role?: Role) => void;
   signOut: () => Promise<void>;
   busy: boolean;
   error: string | null;
@@ -44,6 +50,7 @@ function DevAuth({ children }: { children: ReactNode }) {
   const nav = useNavigate();
   const signOut = useCallback(async () => {
     session.clear();
+    clientAuth.clear();
     nav("/");
   }, [nav]);
   return <Ctx.Provider value={{ mode: "dev", startSignIn: () => {}, signOut, busy: false, error: null }}>{children}</Ctx.Provider>;
@@ -56,9 +63,11 @@ function PrivyAuth({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const exchanging = useRef(false);
 
-  // Privy session present but no Horos session → exchange (first login creates the account).
+  // Privy session present but no Horos session for the chosen role → exchange it.
   useEffect(() => {
-    if (!ready || !authenticated || session.get() || exchanging.current) return;
+    const role = getRole();
+    const hasSession = role === "client" ? clientAuth.get() : session.get();
+    if (!ready || !authenticated || hasSession || exchanging.current) return;
     exchanging.current = true;
     setBusy(true);
     setError(null);
@@ -66,12 +75,22 @@ function PrivyAuth({ children }: { children: ReactNode }) {
       try {
         const privyToken = await getAccessToken();
         if (!privyToken) throw new Error("Privy session expired, please sign in again");
+        const base = import.meta.env.VITE_API_URL ?? "";
+        if (role === "client") {
+          // Identities are read server-side from Privy; nothing from the browser is trusted.
+          const res = await fetch(`${base}/api/client/auth/privy`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${privyToken}` }, body: "{}" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error ?? "Sign-in failed");
+          clientAuth.set(data.token);
+          nav("/client/dashboard");
+          return;
+        }
         const hints = {
           name: user?.google?.name ?? undefined,
           email: user?.email?.address ?? user?.google?.email ?? undefined,
           wallet: user?.wallet?.address ?? undefined,
         };
-        const res = await fetch(`${import.meta.env.VITE_API_URL ?? ""}/api/auth/privy`, {
+        const res = await fetch(`${base}/api/auth/privy`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${privyToken}` },
           body: JSON.stringify({ hints }),
@@ -90,14 +109,23 @@ function PrivyAuth({ children }: { children: ReactNode }) {
     })();
   }, [ready, authenticated, user, getAccessToken, logout, nav]);
 
-  const startSignIn = useCallback(() => {
-    setError(null);
-    if (authenticated && session.get()) nav("/dashboard");
-    else login();
-  }, [authenticated, login, nav]);
+  const startSignIn = useCallback(
+    (role: Role = "freelancer") => {
+      setError(null);
+      localStorage.setItem(ROLE_KEY, role);
+      if (role === "client" && clientAuth.get()) return nav("/client/dashboard");
+      if (role === "freelancer" && session.get()) return nav("/dashboard");
+      // Already signed in to Privy under the other role: log out first so the new role takes effect.
+      if (authenticated) void logout().then(() => login());
+      else login();
+    },
+    [authenticated, login, logout, nav],
+  );
 
   const signOut = useCallback(async () => {
     session.clear();
+    clientAuth.clear();
+    localStorage.removeItem(ROLE_KEY);
     await logout().catch(() => {});
     nav("/");
   }, [logout, nav]);

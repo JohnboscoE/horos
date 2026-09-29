@@ -243,3 +243,41 @@ ALTER TABLE freelancers ADD COLUMN IF NOT EXISTS onboarded_at TIMESTAMPTZ;
 ALTER TABLE freelancers ALTER COLUMN email DROP NOT NULL;
 -- Accounts created before onboarding existed (email signup) are already onboarded.
 UPDATE freelancers SET onboarded_at = created_at WHERE onboarded_at IS NULL AND privy_user_id IS NULL;
+
+-- 2026-09-28: Client dashboard. A client user sees only invoices addressed to them: ones they
+-- signed with a verified wallet, or ones sent to a verified email. No org-wide access (a freelancer
+-- could otherwise list their own email as an org contact and read other freelancers' invoices).
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS client_email TEXT;
+CREATE INDEX IF NOT EXISTS invoices_client_email_idx ON invoices(lower(client_email));
+CREATE INDEX IF NOT EXISTS invoices_ack_signer_idx ON invoices(lower(ack_signer));
+
+CREATE TABLE IF NOT EXISTS client_users (
+  id            TEXT PRIMARY KEY,
+  privy_user_id TEXT UNIQUE,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Verified identities only: wallets proven by signature (or Privy), emails proven by Privy.
+CREATE TABLE IF NOT EXISTS client_identities (
+  client_user_id TEXT NOT NULL REFERENCES client_users(id),
+  kind           TEXT NOT NULL CHECK (kind IN ('wallet', 'email')),
+  value          TEXT NOT NULL, -- lowercase
+  verified_via   TEXT NOT NULL CHECK (verified_via IN ('signature', 'privy')),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (kind, value)
+);
+CREATE INDEX IF NOT EXISTS client_identities_user_idx ON client_identities(client_user_id);
+
+CREATE TABLE IF NOT EXISTS client_sessions (
+  token_hash     TEXT PRIMARY KEY,
+  client_user_id TEXT NOT NULL REFERENCES client_users(id),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One-time wallet sign-in challenges.
+CREATE TABLE IF NOT EXISTS client_nonces (
+  nonce      TEXT PRIMARY KEY,
+  address    TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ
+)

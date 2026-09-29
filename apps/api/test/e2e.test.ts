@@ -135,6 +135,43 @@ describe("end to end (offline)", () => {
     expect(row).toEqual({ paid_minor: "40000000", n: "1" });
   });
 
+  it("pay page reports simulated mode, and settled once paid", async () => {
+    const out = await newInvoice(ada, "25");
+    let page = await request(app).get(`/api/pay/${out.invoice.pay_token}`);
+    expect(page.body.payments).toMatchObject({ mode: "simulated", settled: false, last: null });
+    // Real transactions can't be matched to a demo invoice.
+    const rep = await request(app).post(`/api/pay/${out.invoice.pay_token}/report-tx`).send({ txHash: `0x${"ab".repeat(32)}` });
+    expect(rep.status).toBe(409);
+    await pay(out.invoice.pay_token, "25");
+    page = await request(app).get(`/api/pay/${out.invoice.pay_token}`);
+    expect(page.body.payments.settled).toBe(true);
+    expect(page.body.payments.last.amount).toBe("25.00");
+  });
+
+  it("a reported transaction is verified from the chain and recorded once, however often it's reported", async () => {
+    const out = await newInvoice(ada, "60");
+    const other = await newInvoice(ada, "5");
+    const { txHash } = ctx.mockChain!.pay(out.invoice.deposit_address as `0x${string}`, 60_000_000n);
+    const saved = ctx.circle;
+    // Act as on-chain mode (only `kind` is read by the report endpoint).
+    (ctx as { circle: unknown }).circle = Object.assign(Object.create(Object.getPrototypeOf(saved)), saved, { kind: "circle" });
+    try {
+      const reports = await Promise.all([1, 2, 3].map(() => request(app).post(`/api/pay/${out.invoice.pay_token}/report-tx`).send({ txHash })));
+      expect(reports.map((r) => r.body.state).sort()).toEqual(["already_recorded", "already_recorded", "recorded"]);
+      await watchOnce(ctx); // the watcher sees the same transfer and must not count it again
+      const [row] = await ctx.db.query<{ paid_minor: string; n: string }>(
+        "SELECT i.paid_minor, (SELECT count(*)::text FROM payments WHERE invoice_id = i.id) AS n FROM invoices i WHERE id = $1",
+        [out.invoice.id],
+      );
+      expect(row).toEqual({ paid_minor: "60000000", n: "1" });
+      // A transaction that paid someone else can't be claimed.
+      const claim = await request(app).post(`/api/pay/${other.invoice.pay_token}/report-tx`).send({ txHash });
+      expect(claim.status).toBe(422);
+    } finally {
+      (ctx as { circle: unknown }).circle = saved;
+    }
+  });
+
   it("detects a native transfer that emits no Transfer log", async () => {
     const out = await newInvoice(ada, "50");
     const r = await pay(out.invoice.pay_token, "50", { native: true });

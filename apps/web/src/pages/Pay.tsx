@@ -5,6 +5,7 @@ import { api, date, pct } from "../api";
 import { Badge, ErrorNote } from "../ui/bits";
 import { connect, payToken } from "../wallet";
 import { PayByCard } from "../ui/PayByCard";
+import { CheckCircle2, Loader2 } from "lucide-react";
 
 /** Public client page: review, acknowledge (EIP-712), pay, confirm refunds, respond. */
 export function Pay() {
@@ -18,12 +19,58 @@ export function Pay() {
   const [emailName, setEmailName] = useState("");
   const [payMethod, setPayMethod] = useState<"wallet" | "card">("wallet");
 
-  const load = () => api(`/api/pay/${token}`).then(setD).catch((e) => setErr(e.message));
+  // A payment we sent from this browser that isn't confirmed yet. Kept across reloads so the client
+  // can't miss it and pay twice.
+  const pendingKey = `horos_pending_tx:${token}`;
+  const [pendingTx, setPendingTx] = useState<{ hash: string; at: number } | null>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(pendingKey) ?? "null");
+    } catch {
+      return null;
+    }
+  });
+  const savePending = (hash: string) => {
+    const p = { hash, at: Date.now() };
+    localStorage.setItem(pendingKey, JSON.stringify(p));
+    setPendingTx(p);
+  };
+  const clearPending = () => {
+    localStorage.removeItem(pendingKey);
+    setPendingTx(null);
+  };
+
+  const load = () =>
+    api(`/api/pay/${token}`)
+      .then((data) => {
+        setD(data);
+        if (data.payments?.settled) clearPending();
+      })
+      .catch((e) => setErr(e.message));
   useEffect(() => {
     load();
-    const t = setInterval(load, 8_000);
+    const t = setInterval(load, pendingTx ? 3_000 : 8_000);
     return () => clearInterval(t);
-  }, [token]);
+  }, [token, !!pendingTx]);
+
+  /** Ask the API to verify our transaction on-chain now instead of waiting for the watcher. */
+  const confirmTx = async (hash: string) => {
+    for (let i = 0; i < 12; i++) {
+      try {
+        const r = await api(`/api/pay/${token}/report-tx`, { body: { txHash: hash } });
+        if (r.state !== "pending") {
+          await load();
+          return;
+        }
+      } catch (e) {
+        // A real answer ("no transfer to this invoice", "transaction failed") ends the wait.
+        if ((e as { status?: number }).status && (e as { status?: number }).status !== 202) {
+          clearPending();
+          throw e;
+        }
+      }
+      await new Promise((r) => setTimeout(r, 2_500));
+    }
+  };
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(label);
@@ -41,6 +88,9 @@ export function Pay() {
 
   if (!d) return <Shell><ErrorNote error={err ?? null} /></Shell>;
   const inv = d.invoice;
+  const simulated = d.payments?.mode === "simulated";
+  const settled = !!d.payments?.settled;
+  const pendingStale = !!pendingTx && Date.now() - pendingTx.at > 10 * 60_000;
   const minor = (s: string) => {
     const [w, f = ""] = s.split(".");
     return BigInt(w!) * 1_000_000n + BigInt((f + "000000").slice(0, 6));
@@ -60,7 +110,8 @@ export function Pay() {
     run("pay", async () => {
       const { wallet, account } = await connect(d.chain.chainId, d.chain.explorer);
       const hash = await payToken(wallet, account, inv.tokenAddress as Address, inv.depositAddress as Address, minor(inv.outstanding), d.chain.chainId, d.chain.explorer);
-      setNote(`Payment sent: ${hash}. It will show here within a few seconds.`);
+      savePending(hash);
+      await confirmTx(hash);
     });
 
   const respond = (signed: boolean) =>
@@ -122,6 +173,32 @@ export function Pay() {
 
           <div className="card space-y-3">
             <h2 className="font-semibold">2 · Pay</h2>
+            {settled ? (
+              <PaidInFull last={d.payments.last} />
+            ) : pendingTx ? (
+              <div className="space-y-3 rounded-lg border border-accent/40 bg-accent-dim p-3 text-sm">
+                <div className="flex items-center gap-2 font-semibold text-accent">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Payment sent, confirming on Arc…
+                </div>
+                <p>
+                  Your transaction was submitted.{" "}
+                  <a className="text-accent underline" href={`${d.chain.explorer}/tx/${pendingTx.hash}`} target="_blank" rel="noreferrer">
+                    View it on the explorer
+                  </a>
+                  . This usually takes a few seconds.
+                </p>
+                <p className="font-semibold">Please don't pay again.</p>
+                <button className="btn-ghost w-full" disabled={!!busy} onClick={() => run("check", () => confirmTx(pendingTx.hash))}>
+                  {busy === "check" ? "Checking…" : "Check again"}
+                </button>
+                {pendingStale && (
+                  <button className="w-full text-xs text-muted underline" onClick={() => clearPending()}>
+                    It's been a while. The transaction may have failed or been dropped; dismiss this to pay again.
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
             {d.onramp?.mode !== "off" && (
               <div className="grid grid-cols-2 gap-1 rounded-lg bg-ink p-1 text-sm">
                 {(["wallet", "card"] as const).map((m) => (
@@ -146,6 +223,19 @@ export function Pay() {
                 depositAddress={inv.depositAddress}
                 onDone={load}
               />
+            ) : simulated ? (
+              <>
+                <div className="rounded-lg border border-warn/50 bg-warn/10 p-3 text-sm">
+                  <div className="font-semibold text-warn">Demo environment: payments are simulated</div>
+                  <p className="mt-1">
+                    This invoice doesn't have a real wallet yet, so <b>don't send real funds</b>; they couldn't be recovered. Use the button below to
+                    simulate the payment.
+                  </p>
+                </div>
+                <button className="btn w-full" disabled={!!busy} onClick={() => run("simulate", () => api(`/api/dev/pay/${token}`, { body: { amount: inv.outstanding } }))}>
+                  {busy === "simulate" ? "Simulating…" : `Simulate paying ${inv.outstanding} ${inv.currency}`}
+                </button>
+              </>
             ) : (
               <>
                 <p className="text-sm text-muted">Send {inv.currency} on {d.chain.network === "testnet" ? "Arc Testnet" : "Arc"} to this invoice's own deposit address:</p>
@@ -154,6 +244,8 @@ export function Pay() {
                   {busy === "pay" ? "Confirm in wallet…" : `Pay ${inv.outstanding} ${inv.currency}`}
                 </button>
                 {d.chain.network === "testnet" && <p className="text-xs text-muted">Test USDC: faucet.circle.com (Arc Testnet).</p>}
+              </>
+            )}
               </>
             )}
           </div>
@@ -222,12 +314,39 @@ export function Pay() {
   );
 }
 
+function PaidInFull({ last }: { last: { amount: string; at: string; txUrl: string | null } | null }) {
+  return (
+    <div className="space-y-2 rounded-lg border border-accent/50 bg-accent-dim p-4">
+      <div className="flex items-center gap-2 text-lg font-semibold text-accent">
+        <CheckCircle2 className="h-5 w-5" aria-hidden="true" /> Paid in full
+      </div>
+      {last && (
+        <p className="text-sm">
+          Last payment: {last.amount} on {date(last.at)}
+          {last.txUrl && (
+            <>
+              {" · "}
+              <a className="text-accent underline" href={last.txUrl} target="_blank" rel="noreferrer">
+                receipt on the explorer
+              </a>
+            </>
+          )}
+        </p>
+      )}
+      <p className="text-xs text-muted">Nothing more to pay. The freelancer has been notified.</p>
+    </div>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-grain min-h-screen">
       <header className="border-b border-line">
-        <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-3 font-semibold">
-          <span className="inline-block h-3 w-3 rounded-sm bg-accent" /> Horos
+        <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-3">
+          <span className="inline-block h-3 w-3 rounded-sm bg-accent" /> <span className="font-semibold">Horos</span>
+          <a href="/client" className="ml-auto text-xs text-muted hover:text-accent">
+            See all your invoices →
+          </a>
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>

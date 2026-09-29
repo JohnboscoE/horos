@@ -5,6 +5,7 @@ import { MockAttester, ViemAttester } from "./chain/attester.js";
 import { MockCircleGateway } from "./circle/gateway.js";
 import { RealCircleGateway } from "./circle/circleGateway.js";
 import { resolveLogSigner, type Ctx } from "./context.js";
+import { privyLookupFromConfig } from "./services/privyUsers.js";
 
 /**
  * Wire real or mock integrations from config:
@@ -40,7 +41,9 @@ export async function buildContext(cfg: AppConfig, opts: { memoryDb?: boolean } 
     : null;
   const logSigner = await resolveLogSigner(cfg, db);
 
-  return { cfg, db, chain, circle, attester, model, logSigner, now: () => new Date(), mockChain };
+  const privyUsers = privyLookupFromConfig(cfg);
+
+  return { cfg, db, chain, circle, attester, model, logSigner, privyUsers, now: () => new Date(), mockChain };
 }
 
 export function describeContext(ctx: Ctx): string {

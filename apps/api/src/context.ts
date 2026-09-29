@@ -19,6 +19,8 @@ export interface Ctx {
   model: AgentModel | null;
   /** Signs decision-log entries. Same key as the onchain attester when configured. */
   logSigner: LocalAccount;
+  /** Reads verified Privy accounts (client email sign-in). null → email sign-in unavailable. */
+  privyUsers?: import("./services/privyUsers.js").PrivyUserLookup | null;
   now: () => Date;
 }
 

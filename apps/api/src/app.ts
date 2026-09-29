@@ -10,6 +10,7 @@ import { HttpError } from "./errors.js";
 import { newId } from "./context.js";
 import { authenticate, loginWithPrivy, signup, updatePolicy, updateProfile } from "./services/freelancers.js";
 import { verifyPrivyToken } from "./services/privyAuth.js";
+import { authenticateClient, clientDashboard, createNonce, signInWithPrivy, signInWithWallet } from "./services/clients.js";
 import { acknowledgeByEmail, acknowledgeInvoice, ackTypedData, amountDue, createInvoice, getInvoice, setManualTerms } from "./services/invoices.js";
 import { approveDecision, rejectDecision } from "./services/agent.js";
 import { confirmRefundAddress } from "./services/refunds.js";
@@ -19,7 +20,7 @@ import { networkStats } from "./services/stats.js";
 import { disputeMessage, resolveDispute, resolveMessage, submitResponse } from "./services/responses.js";
 import { metrics } from "./services/metrics.js";
 import { runCollections, runEarlyPayOffers, maybeAnchor } from "./services/scheduler.js";
-import { watchOnce } from "./services/watcher.js";
+import { recordReportedPayment, watchOnce } from "./services/watcher.js";
 import { processChainJobs } from "./services/chainJobs.js";
 import { processRefunds } from "./services/refunds.js";
 import { createOnrampSession, onrampMode } from "./services/onramp.js";
@@ -66,6 +67,7 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
       agent: ctx.model?.name ?? "mock",
       onramp: onrampMode(ctx),
       auth: ctx.cfg.privy ? "privy" : "dev",
+      clientEmailSignIn: !!ctx.privyUsers,
       killSwitch: ctx.cfg.killSwitch,
       unverifiedConfig: ctx.cfg.network.unverified,
       disclaimer: DISCLAIMER,
@@ -136,6 +138,10 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
     const now = ctx.now();
     const dueNow = amountDue(inv, now);
     const paid = minorFromString(inv.paid_minor);
+    const [lastPayment] = await ctx.db.query<{ amount_minor: string; tx_hash: string; detected_at: Date }>(
+      "SELECT amount_minor, tx_hash, detected_at FROM payments WHERE invoice_id = $1 ORDER BY detected_at DESC LIMIT 1",
+      [inv.id],
+    );
     res.json({
       invoice: {
         id: inv.id,
@@ -178,9 +184,34 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
         txUrl: r.tx_hash ? explorerTxUrl(ctx.cfg.network, r.tx_hash) : null,
       })),
       chain: { chainId, explorer: ctx.cfg.network.explorerUrl, network: ctx.cfg.network.network },
+      // "simulated": deposit addresses are placeholders with no key behind them, so the page must
+      // never offer real payments (real funds sent there are unrecoverable).
+      payments: {
+        mode: ctx.circle.kind === "mock" ? "simulated" : "onchain",
+        settled: paid > 0n && dueNow <= paid,
+        last: lastPayment
+          ? {
+              amount: formatAmount(minorFromString(lastPayment.amount_minor)),
+              at: lastPayment.detected_at,
+              txUrl: lastPayment.tx_hash.startsWith("0x") && lastPayment.tx_hash.length === 66 ? explorerTxUrl(ctx.cfg.network, lastPayment.tx_hash) : null,
+            }
+          : null,
+      },
       onramp: { mode: inv.currency === "USDC" ? onrampMode(ctx) : "off" },
       disclaimer: DISCLAIMER,
     });
+  });
+
+  // The client reports the transaction they just sent; we verify it on-chain and record it right away.
+  app.post("/api/pay/:token/report-tx", async (req, res) => {
+    const b = body(z.object({ txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/) }), req);
+    const inv = await byToken(req.params.token);
+    if (ctx.circle.kind === "mock") {
+      throw new HttpError(409, "Payments are simulated in this environment. Real transactions can't be matched to a demo invoice.");
+    }
+    const r = await recordReportedPayment(ctx, { id: inv.id, deposit_address: inv.deposit_address!, currency: inv.currency }, b.txHash as `0x${string}`);
+    if (r.state === "no_transfer") throw new HttpError(422, "That transaction has no USDC transfer to this invoice's address");
+    res.status(r.state === "pending" ? 202 : 200).json({ state: r.state, amount: formatAmount(r.amountMinor) });
   });
 
   // Pay by card (Arc App Kit Onramp). The body the widget sends is ignored: destination is fixed server-side.
@@ -226,6 +257,32 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
     const d = (await ctx.db.query<DecisionRow>("SELECT * FROM agent_decisions WHERE id = $1", [req.params.id]))[0];
     if (!d) throw new HttpError(404, "Decision not found");
     res.json({ decision: d, log: await readLog(ctx, { decisionId: d.id }) });
+  });
+
+  // ---------------------------------------------------------------- client accounts
+  const clientAuth = async (req: Request, _res: Response, next: NextFunction) => {
+    const h = req.header("authorization");
+    (req as Request & { clientUserId: string }).clientUserId = await authenticateClient(ctx, h?.startsWith("Bearer ") ? h.slice(7) : undefined);
+    next();
+  };
+
+  // Wallet sign-in: 1) get a one-time message, 2) sign it, 3) exchange the signature for a session.
+  app.post("/api/client/auth/nonce", async (req, res) => {
+    const b = body(z.object({ address: z.string() }), req);
+    res.json(await createNonce(ctx, b.address));
+  });
+  app.post("/api/client/auth/wallet", async (req, res) => {
+    const b = body(z.object({ address: z.string(), nonce: z.string().min(8), signature: z.string().regex(/^0x[0-9a-fA-F]+$/) }), req);
+    res.json(await signInWithWallet(ctx, b.address, b.nonce, b.signature as Hex));
+  });
+  // Email (or wallet) sign-in through Privy; identities are read from Privy's server API, not the browser.
+  app.post("/api/client/auth/privy", async (req, res) => {
+    const h = req.header("authorization");
+    const { privyUserId } = await verifyPrivyToken(ctx.cfg, h?.startsWith("Bearer ") ? h.slice(7) : "");
+    res.json(await signInWithPrivy(ctx, privyUserId));
+  });
+  app.get("/api/client/dashboard", clientAuth, async (req, res) => {
+    res.json(await clientDashboard(ctx, (req as Request & { clientUserId: string }).clientUserId));
   });
 
   // ---------------------------------------------------------------- freelancer

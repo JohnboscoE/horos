@@ -16,7 +16,7 @@ beforeAll(async () => {
   const { publicKey, privateKey } = await generateKeyPair("ES256", { extractable: true });
   const other = await generateKeyPair("ES256");
   const pem = await exportSPKI(publicKey);
-  const token = (key: CryptoKey | object, sub: string, o: { aud?: string; iss?: string; expSeconds?: number } = {}) =>
+  const token = (key: Parameters<SignJWT["sign"]>[0], sub: string, o: { aud?: string; iss?: string; expSeconds?: number } = {}) =>
     new SignJWT({ sid: "session" })
       .setProtectedHeader({ alg: "ES256" })
       .setSubject(sub)
