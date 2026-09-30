@@ -10,6 +10,7 @@
     "start:worker": "tsx src/worker.ts",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx scripts/seed.ts",
+    "setup:circle": "tsx scripts/setup-circle.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },

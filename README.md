@@ -119,4 +119,4 @@ pnpm dev:api & pnpm dev:worker
 
 ## Status
 
-See `SPEC.md` §9 for priorities. Open verification items: the EURC address on Arc, the Circle Wallets blockchain ID for Arc (the SDK enum in v8.4.1 has no Arc entry), and CCTP/Gateway support.
+See `SPEC.md` §9 for priorities. Verified: Circle Wallets accepts `ARC-TESTNET` (the SDK enum in v8.4.1 has no Arc entry; set up with `pnpm --filter @horos/api setup:circle`). Open: the EURC address on Arc, and CCTP/Gateway support.

@@ -48,8 +48,9 @@ export const NETWORKS: Record<NetworkName, NetworkConfig> = {
     explorerUrl: "https://testnet.arcscan.app",
     usdc: "0x3600000000000000000000000000000000000000",
     eurc: null,
+    // Verified 2026-09-30: Circle created a wallet on "ARC-TESTNET" (the SDK enum has no Arc entry).
     circleBlockchain: "ARC-TESTNET",
-    unverified: ["eurc", "circleBlockchain"],
+    unverified: ["eurc"],
   },
   mainnet: {
     network: "mainnet",

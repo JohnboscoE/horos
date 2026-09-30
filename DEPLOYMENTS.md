@@ -28,6 +28,11 @@ Deployed 2026-09-25 from commit `5ea70a7`. Explorer: https://testnet.arcscan.app
 
 The smoke-test `PaymentRecord` entry uses invoice hash `keccak("horos-smoke-test-…")`, which no real invoice can have.
 
+### Circle Developer-Controlled Wallets (testnet)
+- Blockchain id **`ARC-TESTNET` works** (verified 2026-09-30 by creating a wallet), even though the SDK's `Blockchain` enum (v8.4.1) has no Arc entry.
+- Wallet set: `1ba69546-cefe-508e-bfd5-a9c8fd092de7` (`horos-testnet`). Created with `pnpm --filter @horos/api setup:circle`.
+- Probe wallet: `0x9f29243253fb1224cb565eaba86b00918cea5938`.
+
 ### Notes
 - The decision log is anchored with a strictly increasing entry count. If a database's log is reset, deploy a fresh `DecisionAnchor` for it (the attester now refuses to silently skip a mismatched anchor).
 - Keys are testnet-only and live only in the local `.env` (gitignored). Mainnet requires separate keys, database and a fresh deployment from a tagged commit (SPEC §10).
