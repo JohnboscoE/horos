@@ -5,6 +5,7 @@ import type { IncomingTransfer } from "../chain/reader.js";
 import { ingestPayments } from "./payments.js";
 
 const MAX_BLOCK_RANGE = 5_000n;
+const MAX_CATCHUP = 50_000n;
 const ADDRESS_CHUNK = 100;
 
 interface Watched {
@@ -72,7 +73,14 @@ export async function recordReportedPayment(
 async function watchPass(ctx: Ctx): Promise<{ block: bigint; detected: number; anomalies: string[] }> {
   const latest = await ctx.chain.latestBlock();
   const lastRow = await ctx.db.query<{ value: string }>("SELECT value FROM kv WHERE key = 'watcher_last_block'");
-  const last = lastRow[0] ? BigInt(lastRow[0].value) : latest - 1n;
+  let last = lastRow[0] ? BigInt(lastRow[0].value) : latest - 1n;
+  // Far behind (worker was down, or the cursor came from another chain, e.g. the in-memory demo chain):
+  // jump to near the head. Detection is by balance, so nothing is missed; transfers older than the
+  // window are recorded without their log attribution (sender) instead of crawling millions of blocks.
+  if (latest - last > MAX_CATCHUP || last > latest) {
+    console.warn(`[watcher] cursor at block ${last}, head is ${latest}: jumping ahead`);
+    last = latest - MAX_BLOCK_RANGE;
+  }
   const to = latest - last > MAX_BLOCK_RANGE ? last + MAX_BLOCK_RANGE : latest;
   const from = last + 1n;
 
