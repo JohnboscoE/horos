@@ -34,7 +34,7 @@ const EnvSchema = z.object({
   DECISION_ANCHOR_ADDRESS: optionalString,
 
   ANTHROPIC_API_KEY: optionalString,
-  ANTHROPIC_MODEL: z.string().default("claude-opus-5"),
+  ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
   MOCK_AGENT: bool,
 
   PRIVY_APP_ID: optionalString,

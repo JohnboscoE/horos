@@ -35,7 +35,7 @@ export class AnthropicAgentModel implements AgentModel {
       model: this.name,
       max_tokens: 16_000,
       output_config: {
-        effort: "medium",
+        ...(supportsEffort(this.name) ? { effort: "medium" as const } : {}),
         format: zodOutputFormat(SCHEMAS[snapshot.decisionType]),
       },
       system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
@@ -48,6 +48,11 @@ export class AnthropicAgentModel implements AgentModel {
     const text = response.content.find((b) => b.type === "text");
     return text && "text" in text ? safeJson(text.text) : null;
   }
+}
+
+/** `output_config.effort` returns a 400 on Haiku 4.5 and Sonnet 4.5; every newer model accepts it. */
+export function supportsEffort(model: string): boolean {
+  return !/^claude-(haiku|sonnet)-4-5/.test(model);
 }
 
 function safeJson(s: string): unknown {
