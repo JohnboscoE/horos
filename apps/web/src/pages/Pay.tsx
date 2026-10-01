@@ -158,17 +158,31 @@ export function Pay() {
                   <FileCheck2 className="h-4 w-4 text-accent" aria-hidden="true" />
                   <div className="label !mb-0">Work delivered</div>
                 </div>
-                {inv.description && <p className="text-sm">{inv.description}</p>}
-                <a href={inv.deliverableUrl} target="_blank" rel="noopener noreferrer nofollow" className="btn-ghost w-full justify-center">
-                  Open the work <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                <a
+                  href={inv.deliverableUrl}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="group flex items-center gap-3 rounded-lg border border-line bg-ink px-3 py-3 hover:border-accent/60"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold group-hover:text-accent">Open the work on {hostOf(inv.deliverableUrl)}</div>
+                    <div className="truncate font-mono text-[11px] text-muted" title={inv.deliverableUrl}>{inv.deliverableUrl}</div>
+                  </div>
+                  <ExternalLink className="h-4 w-4 shrink-0 text-muted group-hover:text-accent" aria-hidden="true" />
                 </a>
-                <div className="break-all font-mono text-[11px] text-muted">{inv.deliverableUrl}</div>
-                <p className="text-xs text-muted">
-                  This link is part of the invoice you sign, so it can't be swapped afterwards. Check it before you sign.
-                </p>
+                {inv.acknowledged && inv.ackMethod === "EIP712" ? (
+                  <p className="flex items-start gap-2 text-sm text-accent">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    The client confirmed receipt of this work by signing the invoice.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted">
+                    This link is part of the invoice you sign, so it can't be swapped afterwards. Check it before you sign.
+                  </p>
+                )}
               </div>
             )}
-            {d.freelancerRecord && <FreelancerRecordCard record={d.freelancerRecord} />}
+            {d.freelancerRecord && <FreelancerRecordCard record={d.freelancerRecord} compact={!!inv.deliverableUrl} />}
           </div>
         )}
 
@@ -179,7 +193,22 @@ export function Pay() {
           <div className="card space-y-3">
             <h2 className="font-semibold">1 · Review &amp; sign</h2>
             {inv.acknowledged ? (
-              <p className="text-sm text-muted">{inv.deliverableUrl && inv.ackMethod === "EIP712" ? "Work confirmed and signed" : "Acknowledged"} {inv.ackMethod === "EIP712" ? <>by <span className="mono">{inv.ackSigner}</span></> : "by email (not counted in the shared record)"}.</p>
+              <div className="space-y-2 rounded-lg border border-accent/40 bg-accent-dim p-3 text-sm">
+                <div className="flex items-center gap-2 font-semibold text-accent">
+                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                  {inv.ackMethod === "EIP712" ? (inv.deliverableUrl ? "Work confirmed and signed" : "Signed") : "Acknowledged by name"}
+                </div>
+                <p className="text-muted">
+                  {inv.ackMethod === "EIP712" ? (
+                    <>
+                      Signed by <span className="mono" title={inv.ackSigner}>{inv.ackSigner?.slice(0, 6)}…{inv.ackSigner?.slice(-4)}</span>. Paying on time now counts toward your
+                      organization's payment record.
+                    </>
+                  ) : (
+                    "Acknowledged without a wallet, so it isn't counted in the shared record."
+                  )}
+                </p>
+              </div>
             ) : (
               <>
                 <p className="text-sm text-muted">
@@ -276,7 +305,7 @@ export function Pay() {
             ) : (
               <>
                 <p className="text-sm text-muted">Send {inv.currency} on {d.chain.network === "testnet" ? "Arc Testnet" : "Arc"} to this invoice's own deposit address:</p>
-                <code className="mono block rounded bg-ink px-2 py-2">{inv.depositAddress}</code>
+                <code className="mono block break-all rounded bg-ink px-2 py-2 text-[11px]">{inv.depositAddress}</code>
                 <button className="btn w-full" disabled={!!busy} onClick={payNow}>
                   {busy === "pay" ? "Confirm in wallet…" : `Pay ${inv.outstanding} ${inv.currency}`}
                 </button>
@@ -373,6 +402,14 @@ function PaidInFull({ last }: { last: { amount: string; at: string; txUrl: strin
       <p className="text-xs text-muted">Nothing more to pay. The freelancer has been notified.</p>
     </div>
   );
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "the linked site";
+  }
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

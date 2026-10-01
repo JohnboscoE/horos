@@ -121,6 +121,11 @@ export function Home() {
           <Signup />
           <ClientEntry />
         </div>
+        {!auth.get() && (
+          <div className="mx-auto mt-4 max-w-md">
+            <DemoTokenLogin />
+          </div>
+        )}
         <div className="card mx-auto mt-8 max-w-3xl space-y-2 text-sm">
           <div className="font-semibold">Honest limits</div>
           <ul className="space-y-1 text-muted-foreground">
@@ -240,10 +245,7 @@ function Signup() {
     );
   }
   return (
-    <div className="flex h-full flex-col space-y-4">
-      {mode === "privy" ? <PrivySignup /> : <DevSignup />}
-      <DevTokenLogin collapsed={mode === "privy"} />
-    </div>
+    <div className="flex h-full flex-col">{mode === "privy" ? <PrivySignup /> : <DevSignup />}</div>
   );
 }
 
@@ -308,6 +310,11 @@ function DevSignup() {
       <p className="text-xs text-muted-foreground">Dev sign-up (Privy isn't configured). A Circle wallet is created for you on Arc.</p>
     </form>
   );
+}
+
+function DemoTokenLogin() {
+  const { mode } = useAuth();
+  return <DevTokenLogin collapsed={mode === "privy"} />;
 }
 
 /** Access-token sign-in for seeded demo accounts. */

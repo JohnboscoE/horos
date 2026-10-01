@@ -25,8 +25,8 @@ export const FLOW_STEPS = [
     key: "sign",
     status: "ACKNOWLEDGED",
     title: "Client signs",
-    body: "EIP-712 acknowledgment",
-    detail: "0x51c…9d2 signed the invoice and its terms",
+    body: "Confirms the work, signs the invoice",
+    detail: "0x51c…9d2 signed the invoice, its terms and the work link",
   },
   {
     key: "pay",
@@ -105,7 +105,7 @@ const DETAILS: Record<string, { heading: string; lines: [string, string][]; note
   },
   sign: {
     heading: "Only acknowledged invoices count",
-    lines: [["Signature", "EIP-712 over invoice + terms"], ["Signer", "0x51c…9d2"], ["Counts toward record", "Yes"]],
+    lines: [["Signature", "EIP-712 over invoice, terms + work link"], ["Signer", "0x51c…9d2"], ["Counts toward record", "Yes"]],
     note: "Freelancers can't invent invoices to smear a client, because the client has to sign first.",
   },
   pay: {

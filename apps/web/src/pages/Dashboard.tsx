@@ -73,11 +73,11 @@ export function Dashboard() {
   return (
     <div className="space-y-8">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Open receivables" value={fmt(receivable)} sub={`${open.length} open invoice(s)`} />
+        <Stat label="Open receivables" value={fmt(receivable, "USDC")} sub={`${open.length} open invoice${open.length === 1 ? "" : "s"}`} />
         <Stat label="Overdue" value={invoices.filter((i) => i.status === "OVERDUE").length} />
         <Stat
           label="Forecast shortfall (30d)"
-          value={<span className={forecast && BigInt(forecast.totalShortfallMinor) > 0n ? "text-warn" : ""}>{forecast ? fmt(forecast.totalShortfallMinor) : "—"}</span>}
+          value={<span className={forecast && BigInt(forecast.totalShortfallMinor) > 0n ? "text-warn" : ""}>{forecast ? fmt(forecast.totalShortfallMinor, "USDC") : "—"}</span>}
           sub={<Link to="/settings" className="hover:text-accent">edit cash needs →</Link>}
         />
         <Stat label="Awaiting your approval" value={pending} sub={<Link to="/approvals" className="hover:text-accent">review →</Link>} />

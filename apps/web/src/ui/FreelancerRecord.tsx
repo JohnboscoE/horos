@@ -12,7 +12,7 @@ export const BANDS = ["< 100", "100 – 999", "1,000 – 9,999", "10,000+"];
 const month = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric" });
 
 /** "Who is this freelancer?": facts from invoices clients signed, for a client deciding whether to trust them. */
-export function FreelancerRecordCard({ record, linkToProfile = true }: { record: FreelancerRecordData; linkToProfile?: boolean }) {
+export function FreelancerRecordCard({ record, linkToProfile = true, compact = false }: { record: FreelancerRecordData; linkToProfile?: boolean; compact?: boolean }) {
   const c = record.counts;
   const isNew = c.signedInvoices === 0;
   return (
@@ -39,8 +39,8 @@ export function FreelancerRecordCard({ record, linkToProfile = true }: { record:
           deposit, and check the work link before you sign.
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <Fact value={c.signedInvoices} label={`invoice${c.signedInvoices === 1 ? "" : "s"} signed by clients`} />
+        <div className={`grid grid-cols-2 gap-3 text-sm ${compact ? "" : "sm:grid-cols-4"}`}>
+          <Fact value={c.signedInvoices} label={`client-signed invoice${c.signedInvoices === 1 ? "" : "s"}`} />
           <Fact value={c.distinctClients} label={`different client${c.distinctClients === 1 ? "" : "s"}`} />
           <Fact value={`${c.paidOnTime}/${c.paid}`} label="paid on time" />
           <Fact value={c.withProofOfWork} label="with linked work" />
