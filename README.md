@@ -10,12 +10,24 @@ Built for the Tameion Agents Hackathon (Canteen × Circle × Arc). Full spec: [`
 
 ---
 
+## Where Horos fits
+
+Horos is for freelance work found **outside a marketplace** (referrals, LinkedIn, X, Discord), where there is no escrow and no reviews. It gives each side a way to check the other, and both records come only from invoices the client signed:
+
+| | Client checks the freelancer | Freelancer checks the client |
+|---|---|---|
+| **Record** | Public freelancer record (`/freelancers/:id`): client-signed invoices, distinct clients, paid on time, with linked work | Client payment record (`/clients/:slug`): reliability, recent streak, trend |
+| **Per invoice** | A link to the delivered work, inside the signed message | Terms set by the agent from the client's record |
+| **Dashboard** | `/client/dashboard`: to sign, due, overdue, refunds, paid to date | `/dashboard`: open, paid, received to date, approvals |
+
+Freelancers and clients sign in separately (`/` → "I'm a freelancer" / "I'm a client"), and a client sign-in never creates a freelancer account.
+
 ## How it works
 
 1. **The freelancer signs up.** A Circle developer-controlled wallet is created for them. They set policy bounds and list upcoming cash needs.
-2. **The freelancer creates an invoice.** Each invoice gets its **own deposit address** (a Circle wallet).
+2. **The freelancer creates an invoice**, with a description and optionally a **link to the delivered work**. Each invoice gets its **own deposit address** (a Circle wallet).
 3. **The agent proposes terms** (`SET_TERMS`): net days, deposit %, early-pay discount. It works from the network record, the freelancer's private history with this client, the cash forecast and the policy bounds.
-4. **The client acknowledges** by signing the full invoice (EIP-712, including the terms). Only acknowledged invoices count toward the shared record.
+4. **The client reviews and signs** the full invoice (EIP-712): terms, work description, work link and the sentence "I received the work linked above and accept this invoice and its terms." The link can be changed until the client signs; changing it rebuilds the message, so an earlier signature stops verifying. Only signed invoices count toward either record, and invoices signed by the freelancer's own wallet or marked as tests never count toward the freelancer's record.
 5. **The client pays** to the deposit address. The watcher detects the payment **by balance change** and reconciles it as exact, partial, overpaid or duplicate.
 6. **On settlement, facts go onchain** to `PaymentRecord`: invoice hash, salted client ID hash, due date, paid date, amount band.
 7. **Collections:** for overdue invoices the agent chooses the next step: reminder, discount offer, late-fee notice, escalation, or a pause-work flag.

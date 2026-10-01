@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import { z } from "zod";
-import { formatAmount, minorFromString, parseAmount, explorerTxUrl, INVOICE_TYPES, invoiceDomain } from "@horos/core";
+import { formatAmount, minorFromString, parseAmount, explorerTxUrl, invoiceDomain, invoiceTypes } from "@horos/core";
 import type { Hex } from "viem";
 import type { Ctx } from "./context.js";
 import type { MockChain } from "./chain/reader.js";
@@ -11,7 +11,8 @@ import { newId } from "./context.js";
 import { authenticate, loginWithPrivy, signup, updatePolicy, updateProfile } from "./services/freelancers.js";
 import { verifyPrivyToken } from "./services/privyAuth.js";
 import { authenticateClient, clientDashboard, createNonce, signInWithPrivy, signInWithWallet } from "./services/clients.js";
-import { acknowledgeByEmail, acknowledgeInvoice, ackTypedData, amountDue, createInvoice, getInvoice, setManualTerms } from "./services/invoices.js";
+import { acknowledgeByEmail, acknowledgeInvoice, ackTypedData, amountDue, createInvoice, getInvoice, setDeliverable, setManualTerms } from "./services/invoices.js";
+import { freelancerRecord } from "./services/freelancerRecord.js";
 import { approveDecision, rejectDecision } from "./services/agent.js";
 import { confirmRefundAddress } from "./services/refunds.js";
 import { readLog, verifyLog, logHead } from "./services/decisionLog.js";
@@ -55,6 +56,14 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
       return z.NEVER;
     }
   });
+
+  // Links to delivered work: http(s) only, so a signed invoice never carries a javascript: or data: URL.
+  const workUrl = z
+    .string()
+    .trim()
+    .max(500)
+    .url("Enter a full link, starting with https://")
+    .refine((u) => /^https?:\/\//i.test(u), "Only http(s) links are allowed");
 
   // ---------------------------------------------------------------- public
   app.get("/api/health", async (_req, res) => {
@@ -120,6 +129,11 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
     });
   });
 
+  // A freelancer's public track record, shared with prospective clients before any work starts.
+  app.get("/api/freelancers/:id/record", async (req, res) => {
+    res.json({ ...(await freelancerRecord(ctx.db, req.params.id as string)), disclaimer: DISCLAIMER });
+  });
+
   // Client pay page
   const byToken = async (token: string) => {
     const inv = (await ctx.db.query<InvoiceRow>("SELECT * FROM invoices WHERE pay_token = $1", [token]))[0];
@@ -149,6 +163,7 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
         freelancer: fr?.name,
         client: cl,
         description: inv.description,
+        deliverableUrl: inv.deliverable_url,
         currency: inv.currency,
         amount: formatAmount(minorFromString(inv.amount_minor)),
         amountDueNow: formatAmount(dueNow),
@@ -170,7 +185,8 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
         disputed: (entry as { disputed?: boolean } | undefined)?.disputed ?? false,
         response: (entry as { response_text?: string } | undefined)?.response_text ?? null,
       },
-      typedData: { domain: invoiceDomain(chainId), types: INVOICE_TYPES, primaryType: "Invoice", message },
+      typedData: { domain: invoiceDomain(chainId), types: invoiceTypes(message), primaryType: "Invoice", message },
+      freelancerRecord: await freelancerRecord(ctx.db, inv.freelancer_id).catch(() => null),
       disputeMessageTemplate: inv.invoice_hash ? disputeMessage(inv.invoice_hash, "<your response>") : null,
       resolveMessage: inv.invoice_hash ? resolveMessage(inv.invoice_hash) : null,
       messages,
@@ -356,6 +372,7 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
         currency: z.enum(["USDC", "EURC"]).default("USDC"),
         amount,
         description: z.string().max(500).optional(),
+        deliverableUrl: workUrl.optional(),
         isSelfTest: z.boolean().optional(),
       }),
       req,
@@ -390,6 +407,11 @@ export function createApp(ctx: Ctx & { mockChain?: MockChain | null }) {
   app.post("/api/invoices/:id/terms", auth, async (req, res) => {
     const b = body(z.object({ net_days: z.number().int().min(0).max(365), deposit_bps: z.number().int().min(0).max(10_000), early_pay_discount_bps: z.number().int().min(0).max(10_000) }), req);
     res.json(await setManualTerms(ctx, me(req).id, req.params.id as string, b));
+  });
+
+  app.put("/api/invoices/:id/deliverable", auth, async (req, res) => {
+    const b = body(z.object({ url: workUrl.nullable() }), req);
+    res.json({ invoice: await setDeliverable(ctx, me(req).id, req.params.id as string, b.url) });
   });
 
   app.post("/api/invoices/:id/cancel", auth, async (req, res) => {

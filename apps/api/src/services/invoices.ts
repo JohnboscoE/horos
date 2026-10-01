@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
+  acceptanceText,
   amountBand,
   applyBps,
   clientIdHash,
@@ -56,6 +57,8 @@ export interface CreateInvoiceInput {
   currency: "USDC" | "EURC";
   amountMinor: bigint;
   description?: string;
+  /** Link to the delivered work (repo, design file, document). */
+  deliverableUrl?: string;
   isSelfTest?: boolean;
 }
 
@@ -80,8 +83,8 @@ export async function createInvoice(ctx: Ctx, freelancerId: string, input: Creat
   const wallet = await ctx.circle.createWallet(id, `horos-deposit-${id}`);
   await ctx.db.query(
     `INSERT INTO invoices (id, freelancer_id, client_id, currency, amount_minor, description, status,
-                           deposit_wallet_id, deposit_address, pay_token, is_self_test, network, issued_at, client_email)
-     VALUES ($1,$2,$3,$4,$5,$6,'DRAFT',$7,$8,$9,$10,$11,$12,$13)`,
+                           deposit_wallet_id, deposit_address, pay_token, is_self_test, network, issued_at, client_email, deliverable_url)
+     VALUES ($1,$2,$3,$4,$5,$6,'DRAFT',$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
       id,
       freelancerId,
@@ -96,6 +99,7 @@ export async function createInvoice(ctx: Ctx, freelancerId: string, input: Creat
       ctx.cfg.network.network,
       ctx.now(),
       input.clientEmail?.trim().toLowerCase() || null,
+      input.deliverableUrl?.trim() || null,
     ],
   );
   const invoice = await getInvoice(ctx.db, id);
@@ -193,6 +197,9 @@ function messageFromTerms(terms: InvoiceTerms): InvoiceMessage {
     depositBps: Number(m.depositBps),
     earlyPayDiscountBps: Number(m.earlyPayDiscountBps),
     depositAddress: m.depositAddress as Address,
+    ...(m.acceptance !== undefined
+      ? { description: String(m.description), deliverable: String(m.deliverable), acceptance: String(m.acceptance) }
+      : {}),
   };
 }
 
@@ -205,11 +212,24 @@ export async function finalizeTerms(
   decisionId: string,
 ): Promise<InvoiceRow> {
   if (inv.status !== "DRAFT") return inv;
-  const fr = (await q.query<FreelancerRow>("SELECT * FROM freelancers WHERE id = $1", [inv.freelancer_id]))[0]!;
-  const client = (await q.query<ClientRow>("SELECT * FROM clients WHERE id = $1", [inv.client_id]))[0]!;
   const issuedS = Math.floor(new Date(inv.issued_at).getTime() / 1000);
   const dueS = issuedS + params.net_days * DAY_S;
-  const msg: InvoiceMessage = {
+  const msg = await buildAckMessage(q, inv, params, dueS);
+  const terms: InvoiceTerms = { ...params, decision_id: decisionId, ack_message: serializeMessage(msg) };
+  const hash = invoiceHash(ctx.cfg.network.chain.id, msg);
+  const rows = await q.query<InvoiceRow>(
+    `UPDATE invoices SET terms_json = $2, due_date = to_timestamp($3), invoice_hash = $4, status = 'SENT', updated_at = now()
+     WHERE id = $1 AND status = 'DRAFT' RETURNING *`,
+    [inv.id, JSON.stringify(terms), dueS, hash],
+  );
+  return rows[0] ?? inv;
+}
+
+/** The EIP-712 message the client signs. v2: also the work description, the work link and the acceptance sentence. */
+async function buildAckMessage(q: Queryable, inv: InvoiceRow, params: SetTermsProposal["params"], dueS: number): Promise<InvoiceMessage> {
+  const fr = (await q.query<FreelancerRow>("SELECT * FROM freelancers WHERE id = $1", [inv.freelancer_id]))[0]!;
+  const client = (await q.query<ClientRow>("SELECT * FROM clients WHERE id = $1", [inv.client_id]))[0]!;
+  return {
     invoiceId: inv.id,
     freelancerIdHash: freelancerIdHash(fr.id),
     freelancerName: fr.name,
@@ -221,19 +241,36 @@ export async function finalizeTerms(
     depositBps: params.deposit_bps,
     earlyPayDiscountBps: params.early_pay_discount_bps,
     depositAddress: getAddress(inv.deposit_address!),
+    description: inv.description,
+    deliverable: inv.deliverable_url ?? "",
+    acceptance: acceptanceText(!!inv.deliverable_url),
   };
-  const terms: InvoiceTerms = {
-    ...params,
-    decision_id: decisionId,
-    ack_message: { ...msg, amount: msg.amount.toString(), dueDate: msg.dueDate.toString() },
-  };
-  const hash = invoiceHash(ctx.cfg.network.chain.id, msg);
-  const rows = await q.query<InvoiceRow>(
-    `UPDATE invoices SET terms_json = $2, due_date = to_timestamp($3), invoice_hash = $4, status = 'SENT', updated_at = now()
-     WHERE id = $1 AND status = 'DRAFT' RETURNING *`,
-    [inv.id, JSON.stringify(terms), dueS, hash],
-  );
-  return rows[0] ?? inv;
+}
+
+const serializeMessage = (msg: InvoiceMessage): InvoiceTerms["ack_message"] => ({ ...msg, amount: msg.amount.toString(), dueDate: msg.dueDate.toString() });
+
+/**
+ * Attach, replace or remove the link to the delivered work. Only before the client signs and before any
+ * payment: the link is part of the signed message, so the message and the invoice hash are rebuilt.
+ */
+export async function setDeliverable(ctx: Ctx, freelancerId: string, invoiceId: string, url: string | null) {
+  return ctx.db.tx(async (q) => {
+    const inv = (await q.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1 FOR UPDATE", [invoiceId]))[0];
+    if (!inv || inv.freelancer_id !== freelancerId) throw new HttpError(404, "Invoice not found");
+    if (inv.ack_at) throw new HttpError(409, "The client already signed this invoice, so the work link can't change");
+    if (minorFromString(inv.paid_minor) > 0n) throw new HttpError(409, "This invoice already received a payment");
+    if (inv.status === "CANCELLED") throw new HttpError(409, "This invoice is cancelled");
+    const updated = (await q.query<InvoiceRow>("UPDATE invoices SET deliverable_url = $2, updated_at = now() WHERE id = $1 RETURNING *", [inv.id, url]))[0]!;
+    if (!updated.terms_json || !updated.due_date) return updated; // DRAFT: used when the terms are fixed
+    const dueS = Math.floor(new Date(updated.due_date).getTime() / 1000);
+    const msg = await buildAckMessage(q, updated, updated.terms_json, dueS);
+    const terms: InvoiceTerms = { ...updated.terms_json, ack_message: serializeMessage(msg) };
+    const rows = await q.query<InvoiceRow>(
+      "UPDATE invoices SET terms_json = $2, invoice_hash = $3, updated_at = now() WHERE id = $1 RETURNING *",
+      [inv.id, JSON.stringify(terms), invoiceHash(ctx.cfg.network.chain.id, msg)],
+    );
+    return rows[0]!;
+  });
 }
 
 export function ackTypedData(ctx: Ctx, inv: InvoiceRow) {

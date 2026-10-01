@@ -280,4 +280,8 @@ CREATE TABLE IF NOT EXISTS client_nonces (
   address    TEXT NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL,
   used_at    TIMESTAMPTZ
-)
+);
+
+-- 2026-10-01: Proof of work. The freelancer links the delivered work; v2 invoices put the link,
+-- the description and an acceptance sentence inside the EIP-712 message the client signs.
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS deliverable_url TEXT;

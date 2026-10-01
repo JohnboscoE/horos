@@ -5,7 +5,8 @@ import { api, date, pct } from "../api";
 import { Badge, ErrorNote } from "../ui/bits";
 import { connect, payToken } from "../wallet";
 import { PayByCard } from "../ui/PayByCard";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, ExternalLink, FileCheck2, Loader2 } from "lucide-react";
+import { FreelancerRecordCard } from "../ui/FreelancerRecord";
 
 /** Public client page: review, acknowledge (EIP-712), pay, confirm refunds, respond. */
 export function Pay() {
@@ -18,6 +19,7 @@ export function Pay() {
   const [refundAddr, setRefundAddr] = useState<Record<string, string>>({});
   const [emailName, setEmailName] = useState("");
   const [payMethod, setPayMethod] = useState<"wallet" | "card">("wallet");
+  const [reviewed, setReviewed] = useState(false);
 
   // A payment we sent from this browser that isn't confirmed yet. Kept across reloads so the client
   // can't miss it and pay twice.
@@ -103,7 +105,7 @@ export function Pay() {
       const message = { ...td.message, amount: BigInt(td.message.amount), dueDate: BigInt(td.message.dueDate) };
       const signature = await wallet.signTypedData({ account, domain: td.domain, types: td.types, primaryType: "Invoice", message });
       await api(`/api/pay/${token}/ack`, { body: { signature, signer: account } });
-      setNote("Acknowledged. Your on-time payment will count toward your organization's payment record.");
+      setNote(inv.deliverableUrl ? "Signed. You've confirmed you received the work. Paying on time builds your organization's payment record." : "Signed. Paying on time builds your organization's payment record.");
     });
 
   const payNow = () =>
@@ -148,18 +150,53 @@ export function Pay() {
           <div className="text-sm">Paid so far {inv.paid} · outstanding <span className="font-semibold">{inv.outstanding}</span></div>
         </div>
 
+        {(inv.deliverableUrl || d.freelancerRecord) && (
+          <div className={inv.deliverableUrl && d.freelancerRecord ? "grid gap-4 md:grid-cols-2" : ""}>
+            {inv.deliverableUrl && (
+              <div className="card space-y-3">
+                <div className="flex items-center gap-2">
+                  <FileCheck2 className="h-4 w-4 text-accent" aria-hidden="true" />
+                  <div className="label !mb-0">Work delivered</div>
+                </div>
+                {inv.description && <p className="text-sm">{inv.description}</p>}
+                <a href={inv.deliverableUrl} target="_blank" rel="noopener noreferrer nofollow" className="btn-ghost w-full justify-center">
+                  Open the work <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                </a>
+                <div className="break-all font-mono text-[11px] text-muted">{inv.deliverableUrl}</div>
+                <p className="text-xs text-muted">
+                  This link is part of the invoice you sign, so it can't be swapped afterwards. Check it before you sign.
+                </p>
+              </div>
+            )}
+            {d.freelancerRecord && <FreelancerRecordCard record={d.freelancerRecord} />}
+          </div>
+        )}
+
         <ErrorNote error={err} />
         {note && <div className="rounded-lg border border-accent/40 bg-accent-dim px-3 py-2 text-sm">{note}</div>}
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="card space-y-3">
-            <h2 className="font-semibold">1 · Acknowledge</h2>
+            <h2 className="font-semibold">1 · Review &amp; sign</h2>
             {inv.acknowledged ? (
-              <p className="text-sm text-muted">Acknowledged {inv.ackMethod === "EIP712" ? <>by <span className="mono">{inv.ackSigner}</span></> : "by email (not counted in the shared record)"}.</p>
+              <p className="text-sm text-muted">{inv.deliverableUrl && inv.ackMethod === "EIP712" ? "Work confirmed and signed" : "Acknowledged"} {inv.ackMethod === "EIP712" ? <>by <span className="mono">{inv.ackSigner}</span></> : "by email (not counted in the shared record)"}.</p>
             ) : (
               <>
-                <p className="text-sm text-muted">Sign the invoice and its terms with your wallet. Signed invoices that you pay on time build your organization's credential as a good payer.</p>
-                <button className="btn w-full" disabled={!!busy} onClick={acknowledge}>{busy === "ack" ? "Waiting for wallet…" : "Sign with wallet"}</button>
+                <p className="text-sm text-muted">
+                  {inv.deliverableUrl
+                    ? "Your signature confirms you received the work and accept the invoice and its terms. It's free and sends no transaction."
+                    : "Sign the invoice and its terms with your wallet. It's free and sends no transaction."}{" "}
+                  Signed invoices you pay on time build your organization's record as a good payer.
+                </p>
+                {inv.deliverableUrl && (
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1 accent-accent" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />
+                    I've opened the delivered work and I'm satisfied with it.
+                  </label>
+                )}
+                <button className="btn w-full" disabled={!!busy || (!!inv.deliverableUrl && !reviewed)} onClick={acknowledge}>
+                  {busy === "ack" ? "Waiting for wallet…" : inv.deliverableUrl ? "Confirm work & sign" : "Sign with wallet"}
+                </button>
                 <details className="text-sm">
                   <summary className="cursor-pointer text-muted">No wallet? Acknowledge by name</summary>
                   <div className="mt-2 flex gap-2">

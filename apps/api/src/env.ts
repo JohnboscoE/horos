@@ -43,6 +43,7 @@ const EnvSchema = z.object({
   PRIVY_JWKS_URL: optionalString,
   /** Server-side only. Lets the API read a Privy user's *verified* email/wallets (client sign-in by email). */
   PRIVY_APP_SECRET: optionalString,
+  PRIVY_SECRET_KEY: optionalString,
 
   ONRAMP_ENABLED: z
     .string()
@@ -120,7 +121,8 @@ export function loadConfig(raw: NodeJS.ProcessEnv = process.env): AppConfig {
           // PEM keys pasted into .env often have literal "\n"; normalize.
           verificationKey: env.PRIVY_VERIFICATION_KEY?.replace(/\\n/g, "\n"),
           jwksUrl: env.PRIVY_JWKS_URL ?? `https://auth.privy.io/api/v1/apps/${env.PRIVY_APP_ID}/jwks.json`,
-          appSecret: env.PRIVY_APP_SECRET,
+          // PRIVY_SECRET_KEY is accepted too: it is the name the Privy dashboard shows next to the secret.
+          appSecret: env.PRIVY_APP_SECRET ?? env.PRIVY_SECRET_KEY,
         }
       : null,
     onramp: !env.ONRAMP_ENABLED

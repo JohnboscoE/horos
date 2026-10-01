@@ -27,6 +27,7 @@ export interface InvoiceRow {
   off_platform: boolean;
   is_self_test: boolean;
   network: string;
+  deliverable_url: string | null;
   created_at: Date;
   updated_at: Date;
 }

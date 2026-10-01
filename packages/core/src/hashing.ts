@@ -30,6 +30,33 @@ export const INVOICE_TYPES = {
   ],
 } as const;
 
+/**
+ * v2 adds proof of work: the client signs the work description, a link to the delivered work and an
+ * acceptance sentence, so the signature also confirms the work was received. Invoices whose terms were
+ * fixed before v2 keep the v1 type (their stored message has no `acceptance`).
+ */
+export const INVOICE_TYPES_V2 = {
+  Invoice: [
+    ...INVOICE_TYPES.Invoice,
+    { name: "description", type: "string" },
+    { name: "deliverable", type: "string" },
+    { name: "acceptance", type: "string" },
+  ],
+} as const;
+
+export const isV2Invoice = (m: Pick<InvoiceMessage, "acceptance">) => m.acceptance !== undefined;
+
+export function invoiceTypes(message: Pick<InvoiceMessage, "acceptance">) {
+  return isV2Invoice(message) ? INVOICE_TYPES_V2 : INVOICE_TYPES;
+}
+
+/** The sentence a v2 signer agrees to. */
+export function acceptanceText(hasDeliverable: boolean): string {
+  return hasDeliverable
+    ? "I received the work linked above and accept this invoice and its terms."
+    : "I accept this invoice and its terms.";
+}
+
 export interface InvoiceMessage {
   invoiceId: string;
   freelancerIdHash: Hex;
@@ -44,6 +71,10 @@ export interface InvoiceMessage {
   depositBps: number;
   earlyPayDiscountBps: number;
   depositAddress: Address;
+  /** v2 only: what the work was, a link to it, and the sentence the client signs. Absent on v1 invoices. */
+  description?: string;
+  deliverable?: string;
+  acceptance?: string;
 }
 
 export function invoiceDomain(chainId: number) {
@@ -53,9 +84,10 @@ export function invoiceDomain(chainId: number) {
 export function invoiceTypedData(chainId: number, message: InvoiceMessage) {
   return {
     domain: invoiceDomain(chainId),
-    types: INVOICE_TYPES,
+    types: invoiceTypes(message) as typeof INVOICE_TYPES_V2,
     primaryType: "Invoice" as const,
-    message,
+    // A v1 message has no v2 fields and is hashed with the v1 type, so the cast is only for viem's typing.
+    message: message as Required<InvoiceMessage>,
   };
 }
 

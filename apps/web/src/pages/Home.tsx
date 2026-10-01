@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, auth } from "@/api";
+import { Briefcase, Building2, Check } from "lucide-react";
+import { api, auth, clientAuth } from "@/api";
 import { ErrorNote } from "@/ui/bits";
 import { ResponsiveHeroBanner } from "@/components/ui/responsive-hero-banner";
 import { FLOW_STEPS, FlowStepper, useFlowStep } from "@/components/ui/flow-simulation";
@@ -13,6 +14,7 @@ const HERO_IMAGE =
 
 export function Home() {
   const signedIn = !!auth.get();
+  const clientSignedIn = !!clientAuth.get();
 
   return (
     <div className="bg-background text-foreground">
@@ -26,21 +28,22 @@ export function Home() {
         navLinks={[
           { label: "Home", href: "/", isActive: true },
           { label: "How it works", href: "#how" },
+          { label: "For freelancers", href: "#start" },
           { label: "For clients", href: "/client" },
           { label: "Decision log", href: "/log" },
           { label: "Metrics", href: "/metrics" },
         ]}
-        ctaButtonText={signedIn ? "Open app" : "Get started"}
-        ctaButtonHref={signedIn ? "/dashboard" : "#start"}
+        ctaButtonText={signedIn ? "Open app" : clientSignedIn ? "Your invoices" : "Sign in"}
+        ctaButtonHref={signedIn ? "/dashboard" : clientSignedIn ? "/client/dashboard" : "#start"}
         badgeLabel="Live"
         badgeText="On Arc Testnet · clients can now pay by card"
         title="Know who pays late,"
         titleLine2="before you start the work."
-        description="Invoices paid in USDC on Arc build a shared payment record. An AI agent sets your terms from it and runs collections, inside bounds you set. Every decision is signed and replayable."
-        primaryButtonText={signedIn ? "Go to your invoices" : "Start as a freelancer"}
+        description="Trust on both sides of freelance work paid in USDC on Arc. Clients sign for the work they received, freelancers see who pays on time, and an AI agent sets terms and runs collections inside bounds you set."
+        primaryButtonText={signedIn ? "Go to your invoices" : "I'm a freelancer"}
         primaryButtonHref={signedIn ? "/dashboard" : "#start"}
-        secondaryButtonText="Watch how it works"
-        secondaryButtonHref="#how"
+        secondaryButtonText={clientSignedIn ? "Your client dashboard" : "I'm a client"}
+        secondaryButtonHref={clientSignedIn ? "/client/dashboard" : "/client"}
         partnersTitle="Built on"
         partners={[
           { label: "Arc", href: "https://docs.arc.network" },
@@ -77,24 +80,55 @@ export function Home() {
         ))}
       </section>
 
-      <section id="start" className="mx-auto grid max-w-6xl scroll-mt-20 gap-8 px-4 pb-24 lg:grid-cols-[1.2fr_1fr]">
-        <div className="space-y-5">
-          <h2 className="text-raised text-3xl font-bold tracking-tight md:text-4xl">
-            Good payers earn a credential. <span className="text-primary">Not a blacklist.</span>
-          </h2>
-          <p className="max-w-xl text-muted-foreground">
-            Clients who pay on time want the record, because it helps them attract contributors. Clients can respond to any entry, and disputed entries don't count toward scoring.
+      <section className="mx-auto max-w-6xl px-4 pb-24">
+        <div className="mb-10 max-w-2xl">
+          <div className="mb-3 text-xs uppercase tracking-[0.25em] text-primary">Trust, both ways</div>
+          <h2 className="text-raised text-3xl font-bold tracking-tight md:text-5xl">Each side can check the other.</h2>
+          <p className="mt-4 text-muted-foreground">
+            Horos starts where a marketplace's protection ends: work you found yourself, through referrals, LinkedIn, X or Discord. Every
+            record is built from invoices the client signed, so neither side can invent history.
           </p>
-          <div className="card max-w-xl space-y-2 text-sm">
-            <div className="font-semibold">Honest limits</div>
-            <ul className="space-y-1 text-muted-foreground">
-              <li>· Not sybil-proof: a signature proves a wallet signed, not who owns it.</li>
-              <li>· Late fees are notices. Nothing can enforce them.</li>
-              <li>· Facts only: due date, paid date, amount band. Not a credit bureau.</li>
-            </ul>
-          </div>
         </div>
-        <Signup />
+        <div className="grid gap-4 md:grid-cols-2">
+          <TrustCard
+            icon={<Building2 className="h-5 w-5 text-primary" aria-hidden="true" />}
+            title="Clients check the freelancer"
+            points={[
+              "A public record: invoices signed by clients, how many different clients, and how many came with linked work.",
+              "Each invoice links to the delivered work. Signing confirms you received it, and the link can't change afterwards.",
+              "A dashboard of everything you've signed, paid and still owe.",
+            ]}
+          />
+          <TrustCard
+            icon={<Briefcase className="h-5 w-5 text-primary" aria-hidden="true" />}
+            title="Freelancers check the client"
+            points={[
+              "A payment record per client organization: on time, late or unpaid, weighted toward recent invoices.",
+              "The agent sets terms from it: a deposit for a risky client, an early-payment discount for a reliable one.",
+              "Good payers earn a credential, not a blacklist. Clients can respond to any entry, and disputed entries don't count.",
+            ]}
+          />
+        </div>
+      </section>
+
+      <section id="start" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-24">
+        <div className="mb-8 text-center">
+          <div className="mb-3 text-xs uppercase tracking-[0.25em] text-primary">Get started</div>
+          <h2 className="text-raised text-3xl font-bold tracking-tight md:text-4xl">How do you use Horos?</h2>
+          <p className="mt-3 text-muted-foreground">Two separate accounts, each with its own dashboard and history.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Signup />
+          <ClientEntry />
+        </div>
+        <div className="card mx-auto mt-8 max-w-3xl space-y-2 text-sm">
+          <div className="font-semibold">Honest limits</div>
+          <ul className="space-y-1 text-muted-foreground">
+            <li>· Not sybil-proof: a signature proves a wallet signed, not who owns it.</li>
+            <li>· Late fees are notices. Nothing can enforce them.</li>
+            <li>· Facts only: due date, paid date, amount band. Not a credit bureau.</li>
+          </ul>
+        </div>
       </section>
 
       <footer className="border-t border-border">
@@ -102,6 +136,62 @@ export function Home() {
           Horos is a beta built on Arc with Circle. It records objective payment facts only. Contracts are unaudited.
         </div>
       </footer>
+    </div>
+  );
+}
+
+function TrustCard({ icon, title, points }: { icon: React.ReactNode; title: string; points: string[] }) {
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">{icon}</span>
+        <h3 className="text-lg font-semibold">{title}</h3>
+      </div>
+      <ul className="space-y-2.5 text-sm text-muted-foreground">
+        {points.map((p) => (
+          <li key={p} className="flex gap-2">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            <span>{p}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RoleHeading({ icon, role, title }: { icon: React.ReactNode; role: string; title: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">{icon}</span>
+      <div>
+        <div className="text-xs uppercase tracking-[0.2em] text-primary">{role}</div>
+        <h3 className="font-semibold">{title}</h3>
+      </div>
+    </div>
+  );
+}
+
+const FreelancerHeading = () => (
+  <RoleHeading icon={<Briefcase className="h-5 w-5 text-primary" aria-hidden="true" />} role="Freelancer" title="I do the work and send invoices" />
+);
+
+/** Client side of the role choice: a separate sign-in that only shows invoices addressed to you. */
+function ClientEntry() {
+  const signedIn = !!clientAuth.get();
+  return (
+    <div className="card flex h-full flex-col space-y-4">
+      <RoleHeading icon={<Building2 className="h-5 w-5 text-primary" aria-hidden="true" />} role="Client" title="I hire freelancers and pay invoices" />
+      <ul className="space-y-1.5 text-sm text-muted-foreground">
+        <li>· Every invoice sent to you, with the work it's for</li>
+        <li>· What you've paid, what's due, and refunds owed to you</li>
+        <li>· Each freelancer's record, and your organization's own</li>
+      </ul>
+      <div className="mt-auto space-y-2 pt-2">
+        <Link className="btn w-full" to={signedIn ? "/client/dashboard" : "/client"}>
+          {signedIn ? "Open your client dashboard" : "Sign in as a client"}
+        </Link>
+        <p className="text-xs text-muted-foreground">With the wallet you sign invoices with, or your email. No freelancer account is created.</p>
+      </div>
     </div>
   );
 }
@@ -142,14 +232,15 @@ function Signup() {
   const { mode } = useAuth();
   if (auth.get()) {
     return (
-      <div className="card h-fit space-y-3">
-        <p>You're signed in.</p>
-        <Link className="btn" to="/dashboard">Go to invoices</Link>
+      <div className="card flex h-full flex-col space-y-4">
+        <FreelancerHeading />
+        <p className="text-sm text-muted-foreground">You're signed in as a freelancer.</p>
+        <Link className="btn mt-auto w-full" to="/dashboard">Open your freelancer dashboard</Link>
       </div>
     );
   }
   return (
-    <div className="space-y-4">
+    <div className="flex h-full flex-col space-y-4">
       {mode === "privy" ? <PrivySignup /> : <DevSignup />}
       <DevTokenLogin collapsed={mode === "privy"} />
     </div>
@@ -160,18 +251,20 @@ function Signup() {
 function PrivySignup() {
   const { startSignIn, busy, error } = useAuth();
   return (
-    <div className="card space-y-4">
-      <div>
-        <h3 className="font-semibold">Start as a freelancer</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Sign in with your email, Google, or a wallet. Next you'll choose the name clients see, and we'll set up your Circle wallet on Arc.
-        </p>
-      </div>
+    <div className="card flex flex-1 flex-col space-y-4">
+      <FreelancerHeading />
+      <ul className="space-y-1.5 text-sm text-muted-foreground">
+        <li>· Invoices that link to your work, and a public record to share</li>
+        <li>· Terms set from each client's payment record</li>
+        <li>· Payments in USDC to your own Circle wallet on Arc</li>
+      </ul>
       <ErrorNote error={error} />
-      <button className="btn w-full" onClick={() => startSignIn("freelancer")} disabled={busy}>
-        {busy ? "Setting up your account…" : "Continue with email, Google or wallet"}
-      </button>
-      <p className="text-xs text-muted-foreground">Secured by Privy. Horos never sees your password or wallet keys.</p>
+      <div className="mt-auto space-y-2 pt-2">
+        <button className="btn w-full" onClick={() => startSignIn("freelancer")} disabled={busy}>
+          {busy ? "Setting up your account…" : "Sign in as a freelancer"}
+        </button>
+        <p className="text-xs text-muted-foreground">Email, Google or wallet, secured by Privy. Horos never sees your password or wallet keys.</p>
+      </div>
     </div>
   );
 }
@@ -201,7 +294,7 @@ function DevSignup() {
         }
       }}
     >
-      <h3 className="font-semibold">Start as a freelancer</h3>
+      <FreelancerHeading />
       <div>
         <label className="label">Name</label>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />

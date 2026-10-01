@@ -15,6 +15,7 @@ import { Metrics } from "./pages/Metrics";
 import { Onboarding } from "./pages/Onboarding";
 import { ClientSignIn } from "./pages/ClientSignIn";
 import { ClientDashboard } from "./pages/ClientDashboard";
+import { FreelancerProfile } from "./pages/FreelancerProfile";
 import { AuthProvider } from "./auth";
 
 createRoot(document.getElementById("root")!).render(
@@ -36,6 +37,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="metrics" element={<Metrics />} />
         </Route>
         <Route path="pay/:token" element={<Pay />} />
+        <Route path="freelancers/:id" element={<FreelancerProfile />} />
       </Routes>
       </AuthProvider>
     </BrowserRouter>

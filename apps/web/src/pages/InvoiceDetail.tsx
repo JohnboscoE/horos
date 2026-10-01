@@ -71,6 +71,8 @@ export function InvoiceDetail() {
         )}
       </div>
 
+      <WorkLink inv={inv} onDone={load} />
+
       {inv.status === "DRAFT" && <ManualTerms id={inv.id} onDone={load} />}
 
       <Section title="Agent decisions">
@@ -163,5 +165,67 @@ function ManualTerms({ id, onDone }: { id: string; onDone: () => void }) {
       <button className="btn self-end">Set terms</button>
       <div className="sm:col-span-4"><ErrorNote error={err} /></div>
     </form>
+  );
+}
+
+/** Proof of work: editable until the client signs (the link is inside the signed message) or pays. */
+function WorkLink({ inv, onDone }: { inv: any; onDone: () => void }) {
+  const locked = !!inv.ack_at || BigInt(inv.paid_minor) > 0n || inv.status === "CANCELLED";
+  const [editing, setEditing] = useState(false);
+  const [url, setUrl] = useState(inv.deliverable_url ?? "");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async (next: string | null) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/api/invoices/${inv.id}/deliverable`, { method: "PUT", body: { url: next } });
+      setEditing(false);
+      onDone();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="label !mb-0">Proof of work</div>
+        {inv.ack_at && inv.deliverable_url && inv.ack_method === "EIP712" && <span className="text-xs text-accent">Client confirmed receipt by signing</span>}
+      </div>
+      {editing ? (
+        <form
+          className="flex flex-col gap-2 sm:flex-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save(url.trim() || null);
+          }}
+        >
+          <input className="input flex-1" type="url" placeholder="https://figma.com/… or https://github.com/…" value={url} onChange={(e) => setUrl(e.target.value)} autoFocus />
+          <button className="btn" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+          <button type="button" className="btn-ghost" onClick={() => setEditing(false)}>Cancel</button>
+        </form>
+      ) : inv.deliverable_url ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <a href={inv.deliverable_url} target="_blank" rel="noopener noreferrer" className="break-all text-accent hover:underline">{inv.deliverable_url}</a>
+          {!locked && (
+            <>
+              <button className="text-xs text-muted hover:text-fg" onClick={() => setEditing(true)}>Change</button>
+              <button className="text-xs text-muted hover:text-bad" onClick={() => void save(null)} disabled={busy}>Remove</button>
+            </>
+          )}
+        </div>
+      ) : locked ? (
+        <p className="text-sm text-muted">No work link was attached before the client signed.</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
+          No work link yet. Clients trust an invoice more when they can open what they're paying for.
+          <button className="btn-ghost px-3 py-1.5" onClick={() => setEditing(true)}>Add link</button>
+        </div>
+      )}
+      <ErrorNote error={err} />
+    </div>
   );
 }

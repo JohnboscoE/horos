@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { GENESIS_HASH, signEntry, verifyChain, type LogBody, type LogEntry } from "../src/decisionLog.js";
-import { clientIdHash, freelancerIdHash, invoiceHash, invoiceTypedData, verifyInvoiceAck, type InvoiceMessage } from "../src/hashing.js";
+import { acceptanceText, clientIdHash, freelancerIdHash, invoiceHash, invoiceTypedData, verifyInvoiceAck, type InvoiceMessage } from "../src/hashing.js";
 import { canonicalJson } from "../src/canonical.js";
 
 const attester = privateKeyToAccount(generatePrivateKey());
@@ -87,6 +87,17 @@ describe("EIP-712 invoice acknowledgment", () => {
   it("invoiceHash binds chain and content", () => {
     expect(invoiceHash(5_042_002, msg)).not.toBe(invoiceHash(5_042, msg));
     expect(invoiceHash(5_042_002, msg)).not.toBe(invoiceHash(5_042_002, { ...msg, netDays: 30 }));
+  });
+
+  it("v2 signs the delivered work, and the link can't be swapped after signing", async () => {
+    const v2: InvoiceMessage = { ...msg, description: "Landing page", deliverable: "https://figma.com/file/abc", acceptance: acceptanceText(true) };
+    expect(invoiceTypedData(5_042_002, v2).types.Invoice).toHaveLength(14);
+    expect(invoiceTypedData(5_042_002, msg).types.Invoice).toHaveLength(11); // v1 invoices keep their type
+    const sig = await client.signTypedData(invoiceTypedData(5_042_002, v2));
+    expect(await verifyInvoiceAck(5_042_002, v2, sig, client.address)).toBe(true);
+    expect(await verifyInvoiceAck(5_042_002, { ...v2, deliverable: "https://evil.example" }, sig, client.address)).toBe(false);
+    expect(await verifyInvoiceAck(5_042_002, msg, sig, client.address)).toBe(false);
+    expect(invoiceHash(5_042_002, v2)).not.toBe(invoiceHash(5_042_002, msg));
   });
 });
 

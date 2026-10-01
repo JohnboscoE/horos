@@ -181,12 +181,15 @@ export async function clientDashboard(ctx: Ctx, clientUserId: string) {
         bucket: bucketOf(inv),
         status: inv.status,
         freelancer: inv.freelancer_name,
+        freelancerId: inv.freelancer_id,
         client: { name: inv.client_display_name, slug: inv.org_slug },
         description: inv.description,
+        deliverableUrl: inv.deliverable_url,
         currency: inv.currency,
         amount: formatAmount(minorFromString(inv.amount_minor)),
         amountDueNow: formatAmount(due),
         paid: formatAmount(paid),
+        paidMinor: paid.toString(),
         outstandingMinor: (due > paid && !["PAID", "REFUNDED", "OVERPAID", "REFUND_PENDING", "CANCELLED"].includes(inv.status) ? due - paid : 0n).toString(),
         dueDate: inv.due_date,
         paidAt: inv.paid_at,
@@ -209,11 +212,16 @@ export async function clientDashboard(ctx: Ctx, clientUserId: string) {
     }),
   );
 
-  const outstanding = invoices.filter((i) => i.currency === "USDC").reduce((s, i) => s + BigInt(i.outstandingMinor), 0n);
+  const usdc = invoices.filter((i) => i.currency === "USDC");
+  const outstanding = usdc.reduce((s, i) => s + BigInt(i.outstandingMinor), 0n);
+  const paidToDate = usdc.reduce((s, i) => s + BigInt(i.paidMinor), 0n);
   return {
     identities: identities.map((i) => ({ kind: i.kind, value: i.value, verifiedVia: i.verified_via })),
     totals: {
       outstandingUsdc: formatAmount(outstanding),
+      paidUsdc: formatAmount(paidToDate),
+      paidInvoices: invoices.filter((i) => i.bucket === "PAID").length,
+      freelancers: new Set(invoices.map((i) => i.freelancerId)).size,
       toSign: invoices.filter((i) => i.bucket === "TO_SIGN").length,
       overdue: invoices.filter((i) => i.bucket === "OVERDUE").length,
       refundsAwaitingYou: invoices.reduce((s, i) => s + i.refundsAwaitingYou, 0),

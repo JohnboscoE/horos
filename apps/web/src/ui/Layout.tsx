@@ -21,6 +21,7 @@ export function Layout() {
           <NavLink to="/" className="mr-4 flex items-center gap-2 font-semibold tracking-tight">
             <span className="inline-block h-3 w-3 rounded-sm bg-accent" /> Horos
           </NavLink>
+          {authed && <span className="mr-2 rounded-full border border-line px-2 py-0.5 text-xs text-muted">Freelancer</span>}
           <nav className="flex flex-wrap gap-1">
             {authed && (
               <>

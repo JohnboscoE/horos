@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowUpRight, LogOut } from "lucide-react";
+import { ArrowUpRight, FileCheck2, LogOut } from "lucide-react";
 import { clientApi, clientAuth, date, pct } from "@/api";
 import { useAuth } from "@/auth";
 import { Badge, ErrorNote, Section, Stat } from "@/ui/bits";
@@ -13,6 +13,8 @@ interface ClientInvoice {
   bucket: Bucket;
   status: string;
   freelancer: string;
+  freelancerId: string;
+  deliverableUrl: string | null;
   client: { name: string; slug: string };
   description: string;
   currency: string;
@@ -110,7 +112,7 @@ export function ClientDashboard() {
         ) : (
           <>
             <div>
-              <h1 className="font-instrument-serif text-3xl text-white sm:text-4xl">Your invoices</h1>
+              <h1 className="font-instrument-serif text-3xl text-white sm:text-4xl">Your invoices &amp; payments</h1>
               <p className="mt-1 text-sm text-muted">
                 Signed in as{" "}
                 {[...wallets.map((w: any) => <span key={w.value} className="mono">{w.value.slice(0, 6)}…{w.value.slice(-4)}</span>), ...emails.map((e: any) => <span key={e.value}>{e.value}</span>)].reduce(
@@ -122,9 +124,17 @@ export function ClientDashboard() {
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Stat label="Outstanding" value={`${d.totals.outstandingUsdc} USDC`} />
+              <Stat
+                label="Paid to date"
+                value={`${d.totals.paidUsdc} USDC`}
+                sub={`${d.totals.paidInvoices} invoice${d.totals.paidInvoices === 1 ? "" : "s"} · ${d.totals.freelancers} freelancer${d.totals.freelancers === 1 ? "" : "s"}`}
+              />
               <Stat label="Waiting for your signature" value={d.totals.toSign} />
-              <Stat label="Overdue" value={<span className={d.totals.overdue ? "text-bad" : ""}>{d.totals.overdue}</span>} />
-              <Stat label="Refunds to confirm" value={<span className={d.totals.refundsAwaitingYou ? "text-warn" : ""}>{d.totals.refundsAwaitingYou}</span>} />
+              <Stat
+                label="Overdue"
+                value={<span className={d.totals.overdue ? "text-bad" : ""}>{d.totals.overdue}</span>}
+                sub={d.totals.refundsAwaitingYou ? <span className="text-warn">{d.totals.refundsAwaitingYou} refund(s) to confirm</span> : undefined}
+              />
             </div>
 
             <Section title="Invoices">
@@ -168,8 +178,13 @@ export function ClientDashboard() {
                       {shown.map((i) => (
                         <tr key={i.id} className="border-b border-line/60">
                           <td className="px-4 py-3">
-                            <div className="font-medium">{i.freelancer}</div>
+                            <Link to={`/freelancers/${i.freelancerId}`} className="font-medium hover:text-accent">{i.freelancer}</Link>
                             <div className="text-xs text-muted">{i.description || "—"}</div>
+                            {i.deliverableUrl && (
+                              <a href={i.deliverableUrl} target="_blank" rel="noopener noreferrer nofollow" className="mt-0.5 inline-flex items-center gap-1 text-xs text-accent hover:underline">
+                                <FileCheck2 className="h-3 w-3" aria-hidden="true" /> Delivered work
+                              </a>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-muted">{i.client.name}</td>
                           <td className="px-4 py-3">
