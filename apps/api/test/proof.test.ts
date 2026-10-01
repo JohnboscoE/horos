@@ -105,9 +105,9 @@ describe("proof of work and the freelancer record", () => {
   });
 
   it("invoices signed with the freelancer's own wallet don't count", async () => {
-    const [{ main_wallet_address }] = await ctx.db.query<{ main_wallet_address: string }>("SELECT main_wallet_address FROM freelancers WHERE id = $1", [ada.id]);
+    const [fr] = await ctx.db.query<{ main_wallet_address: string }>("SELECT main_wallet_address FROM freelancers WHERE id = $1", [ada.id]);
     const self = await newInvoice(ada.token, { clientName: "Self Co" });
-    await ctx.db.query("UPDATE invoices SET ack_method = 'EIP712', ack_signer = $2, ack_at = now() WHERE id = $1", [self.id, main_wallet_address]);
+    await ctx.db.query("UPDATE invoices SET ack_method = 'EIP712', ack_signer = $2, ack_at = now() WHERE id = $1", [self.id, fr!.main_wallet_address]);
     const r = await request(app).get(`/api/freelancers/${ada.id}/record`);
     expect(r.body.counts.signedInvoices).toBe(2);
   });
