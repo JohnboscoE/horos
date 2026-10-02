@@ -1,0 +1,68 @@
+# Render Blueprint: the Horos API (Express + background loops) on a free web service.
+# Database: Neon Postgres via DATABASE_URL. Web app: Cloudflare Pages or Vercel (apps/web).
+services:
+  - type: web
+    name: horos-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: corepack enable && pnpm install --frozen-lockfile
+    # tsx runs the TypeScript directly, same as local dev.
+    startCommand: cd apps/api && node_modules/.bin/tsx src/server.ts
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # One process runs the API and the watcher/collections loops.
+      - key: RUN_WORKER_IN_API
+        value: "true"
+      - key: WORKER_INTERVAL_MS
+        value: "15000"
+      - key: NETWORK
+        value: testnet
+      - key: MOCK_CIRCLE
+        value: "false"
+      - key: MOCK_AGENT
+        value: "false"
+      - key: ANTHROPIC_MODEL
+        value: claude-haiku-4-5
+      # Set these in the Render dashboard (values from your .env; never commit them).
+      - key: DATABASE_URL
+        sync: false
+      - key: WEB_ORIGIN
+        sync: false
+      - key: PUBLIC_WEB_URL
+        sync: false
+      - key: ARC_RPC_URLS
+        sync: false
+      - key: CIRCLE_API_KEY
+        sync: false
+      - key: CIRCLE_ENTITY_SECRET
+        sync: false
+      - key: CIRCLE_WALLET_SET_ID
+        sync: false
+      - key: ATTESTER_PRIVATE_KEY
+        sync: false
+      - key: PREVIOUS_LOG_SIGNERS
+        sync: false
+      - key: PAYMENT_RECORD_ADDRESS
+        sync: false
+      - key: DECISION_ANCHOR_ADDRESS
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PRIVY_APP_ID
+        sync: false
+      - key: PRIVY_SECRET_KEY
+        sync: false
+      - key: ONRAMP_ENABLED
+        sync: false
+      - key: ONRAMP_API_KEY
+        sync: false
+      - key: ONRAMP_REFERRER_DOMAIN
+        sync: false
+      - key: MAX_INVOICE_USDC
+        sync: false
+      - key: KILL_SWITCH
+        sync: false

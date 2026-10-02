@@ -34,7 +34,10 @@ export async function openDb(opts: { databaseUrl?: string; pgliteDir?: string; m
 
 async function openPg(url: string): Promise<Db> {
   const pg = await import("pg");
-  const pool = new pg.default.Pool({ connectionString: url, max: 10 });
+  const pool = new pg.default.Pool({ connectionString: url, max: 10, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 15_000 });
+  // Serverless Postgres (Neon) drops idle connections. Without a listener, that error on an idle
+  // pooled client is unhandled and kills the process; the pool replaces the client on the next query.
+  pool.on("error", (e) => console.warn(`[db] idle connection dropped: ${e.message}`));
   return {
     async query<T>(sql: string, params: unknown[] = []) {
       const r = await pool.query(sql, params);
